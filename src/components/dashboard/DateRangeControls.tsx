@@ -20,8 +20,6 @@ export const DateRangeControls = React.memo(function DateRangeControls({
     onViewChange, onSelectionChange, onZoomOut, onZoomToSelection, onResetSelection
 }: DateRangeControlsProps) {
     
-    // Shared class for the input grid to ensure consistent responsive behavior
-    // 1 col on mobile, 2 cols on tablet, back to 1 col when layout splits (lg), back to 2 cols on wide screens (xl)
     const adaptiveGridClass = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3 relative z-10";
 
     return (
@@ -42,7 +40,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                 
                 <div className={adaptiveGridClass}>
                     {['start', 'end'].map(field => (
-                        <div key={field} className="relative group">
+                        <div key={field} className="relative group min-w-0">
                             <label className="absolute -top-2 left-2 px-1 bg-slate-900 text-[10px] text-slate-500 font-medium group-focus-within:text-emerald-500 transition-colors capitalize z-10">
                                 {field}
                             </label>
@@ -51,7 +49,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                                 style={{ colorScheme: 'dark' }}
                                 value={formatDateTimeLocal(viewRange[field as 'start' | 'end'])}
                                 onChange={(e) => onViewChange(field as 'start' | 'end', e.target.value)}
-                                className="w-full min-w-0 bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner"
+                                className="w-full max-w-full block min-w-0 bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner"
                             />
                         </div>
                     ))}
@@ -83,7 +81,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
 
                 <div className={adaptiveGridClass}>
                     {['start', 'end'].map(field => (
-                        <div key={field} className="relative group">
+                        <div key={field} className="relative group min-w-0">
                             
                             <label className="absolute -top-2 left-2 px-1 bg-slate-950/80 backdrop-blur text-[10px] text-emerald-600/70 font-medium group-focus-within:text-emerald-400 transition-colors capitalize z-10">
                                 {field}
@@ -93,7 +91,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                                 style={{ colorScheme: 'dark' }}
                                 value={formatDateTimeLocal(selection[field as 'start' | 'end'])}
                                 onChange={(e) => onSelectionChange(field as 'start' | 'end', e.target.value)}
-                                className="w-full min-w-0 bg-slate-950/50 border border-emerald-900/50 rounded-lg px-3 py-2 text-sm text-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/80 transition-all shadow-inner"
+                                className="w-full max-w-full block min-w-0 bg-slate-950/50 border border-emerald-900/50 rounded-lg px-3 py-2 text-sm text-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/80 transition-all shadow-inner"
                             />
                         </div>
                     ))}
