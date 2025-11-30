@@ -179,7 +179,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="bg-emerald-500/10 p-2 rounded-lg"><Plug className="w-6 h-6 text-emerald-500" /></div>
             <div>
-              <h1 className="text-lg md:text-xl font-bold">GB Energy Meter</h1>
+              <h1 className="text-lg md:text-xl font-bold"><span className="text-emerald-500">GB</span> Energy Meter</h1>
               {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}
             </div>
           </div>
