@@ -225,7 +225,7 @@ export default function App() {
 
                 {/* Tab Header & Action Bar */}
                 <div className="border-b border-slate-800 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <h3 className="font-bold text-lg text-slate-200">Usage</h3>
                     <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700/50">
                       <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<BarChart2 className="w-4 h-4" />}>Chart</TabButton>

@@ -7,7 +7,6 @@ import {
     ChevronDown, 
     ChevronUp, 
     Download, 
-    ShieldCheck, 
     Lock, 
     Github, 
     ExternalLink, 

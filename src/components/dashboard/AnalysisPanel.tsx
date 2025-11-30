@@ -63,7 +63,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     return (
         <div className="absolute inset-0 flex flex-col overflow-hidden">
             {/* Controls Header */}
-            <div className="p-4 border-b border-slate-800 space-y-4 overflow-auto max-h-[220px]">
+            <div className="p-4 border-b border-slate-800 space-y-4 overflow-auto">
 
                 {/* Day Filters */}
                 <div className="flex flex-wrap items-center gap-2">
