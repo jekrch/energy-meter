@@ -187,7 +187,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
         {!rawData ? (
           /* Empty State / Upload */
           <UploadSection
@@ -248,7 +248,7 @@ export default function App() {
                 </div>
 
                 {/* Tab Content Areas */}
-                <div className="flex-1 min-h-0 relative min-h-[600px]">
+                <div className="flex-1 min-h-0 relative min-h-[300px]">
                   {activeTab === 'chart' && (
                     <MainChart
                       data={chartData}

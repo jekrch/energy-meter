@@ -11,7 +11,8 @@ import {
     Github, 
     ExternalLink, 
     User,
-    Scissors
+    Scissors,
+    Zap 
 } from 'lucide-react';
 
 interface UploadSectionProps {
@@ -26,7 +27,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
     const [activeTab, setActiveTab] = useState<'format' | 'privacy'>('format');
 
     return (
-        <div className="max-w-xl mx-auto mt-12 pb-12">
+        <div className="max-w-xl mx-auto mt-0 pb-12">
             <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 p-8 text-center transition-all duration-300">
                 <div className="bg-slate-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-slate-700">
                     <Upload className="w-10 h-10 text-emerald-500" />
@@ -96,13 +97,31 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                             <div className="p-5">
                                 {activeTab === 'format' ? (
                                     <>
+                                        <div className="mb-5 pb-5 border-b border-slate-700/50">
+                                            <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
+                                                <Zap className="w-4 h-4" /> What is it?
+                                            </h4>
+                                            <p className="text-slate-400 text-xs leading-relaxed mb-3">
+                                                Green Button is an industry-standard data format that allows utility customers to access and share their energy usage data securely. It creates a common XML language for energy data across different utility providers.
+                                            </p>
+                                            <a 
+                                                href="https://www.greenbuttondata.org/" 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-300 transition-colors hover:underline"
+                                            >
+                                                Learn more at GreenButtonData.org
+                                                <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                        </div>
+
                                         <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
                                             <Download className="w-4 h-4" /> Instructions
                                         </h4>
-                                        <ol className="list-decimal list-inside space-y-2 text-slate-400 text-sm marker:text-slate-600">
+                                        <ol className="list-decimal ml-4 space-y-2 text-slate-400 text-sm marker:text-slate-600">
                                             <li>Log in to your utility's website.</li>
                                             <li>Find "Green Button", "Download My Data", or "Export Usage".</li>
-                                            <li>Select <strong>XML</strong> format.</li>
+                                            <li>Select <strong>XML</strong> format (often called "Green Button Download").</li>
                                         </ol>
                                     </>
                                 ) : (
@@ -122,7 +141,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                             <p className="text-xs text-slate-400 mb-2">
                                                 To be extra safe, you can edit the XML file before uploading:
                                             </p>
-                                            <ol className="list-decimal list-inside space-y-1 text-slate-500 text-xs marker:text-slate-600">
+                                            <ol className="list-decimal ml-4 space-y-1 text-slate-500 text-xs marker:text-slate-600">
                                                 <li>Open the <strong>.xml</strong> file in Notepad or TextEdit.</li>
                                                 <li>Search (Ctrl+F) for your <strong>Name</strong>, <strong>Address</strong>, or <strong>Account #</strong>.</li>
                                                 <li>Delete the text between the tags (e.g., replace your address with "REDACTED").</li>
@@ -140,7 +159,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
             {/* --- Footer / Attribution --- */}
             <div className="mt-8 flex flex-col items-center gap-3 text-sm text-slate-500">
                 <div className="flex items-center gap-1">
-                    <span>Created by</span>
+                    <span>created by</span>
                     <a 
                         href="https://jacobkrch.com" 
                         target="_blank" 
