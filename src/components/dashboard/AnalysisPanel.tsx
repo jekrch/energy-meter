@@ -33,6 +33,15 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     results, isProcessing, autoZoom, setAutoZoom, analysisDomain
 }: AnalysisPanelProps) {
 
+    // --- ENFORCE DEFAULTS ON MOUNT ---
+    React.useEffect(() => {
+        setGroupBy('month');       // Default to Monthly chunks
+        setAnalysisView('averages'); // Default to Averaged view
+        setAutoZoom(true);         // Default to Auto Fit
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Empty dependency array ensures this runs only once when the panel mounts
+
+
     // Handlers for filters
     const toggleDay = (day: number) => {
         setFilters(prev => ({
@@ -61,7 +70,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const hasActiveFilters = filters.daysOfWeek.length > 0 || filters.months.length > 0 || filters.hourStart > 0 || filters.hourEnd < 23;
 
     return (
-        <div className="absolute inset-0 flex flex-col overflow-hidden">
+        <div className="absolute inset-0 flex flex-col overflow-hidden min-h-[500px]">
             {/* Controls Header */}
             <div className="p-4 border-b border-slate-800 space-y-4 overflow-auto">
 

@@ -221,7 +221,7 @@ export default function App() {
               />
 
               {/* Main Tabbed Interface */}
-              <div className="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden flex flex-col h-[600px]">
+              <div className="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
 
                 {/* Tab Header & Action Bar */}
                 <div className="border-b border-slate-800 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -248,7 +248,7 @@ export default function App() {
                 </div>
 
                 {/* Tab Content Areas */}
-                <div className="flex-1 min-h-0 relative">
+                <div className="flex-1 min-h-0 relative min-h-[600px]">
                   {activeTab === 'chart' && (
                     <MainChart
                       data={chartData}
@@ -262,19 +262,21 @@ export default function App() {
                   )}
 
                   {activeTab === 'analysis' && (
-                    <AnalysisPanel
-                      filters={analysisFilters}
-                      setFilters={setAnalysisFilters}
-                      groupBy={groupBy}
-                      setGroupBy={setGroupBy}
-                      analysisView={analysisView}
-                      setAnalysisView={setAnalysisView}
-                      results={analysisResults}
-                      isProcessing={analysisProcessing}
-                      autoZoom={autoZoom}
-                      setAutoZoom={setAutoZoom}
-                      analysisDomain={analysisDomain}
-                    />
+                    <div className="min-h-[600px]">
+                      <AnalysisPanel
+                        filters={analysisFilters}
+                        setFilters={setAnalysisFilters}
+                        groupBy={groupBy}
+                        setGroupBy={setGroupBy}
+                        analysisView={analysisView}
+                        setAnalysisView={setAnalysisView}
+                        results={analysisResults}
+                        isProcessing={analysisProcessing}
+                        autoZoom={autoZoom}
+                        setAutoZoom={setAutoZoom}
+                        analysisDomain={analysisDomain}
+                      />
+                    </div>
                   )}
 
                   {activeTab === 'table' && (

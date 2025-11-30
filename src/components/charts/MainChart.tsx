@@ -96,7 +96,7 @@ export const MainChart = React.memo(function MainChart({
     return (
         <div
             ref={chartContainerRef}
-            className="chart-container absolute inset-0 p-4 pb-2 select-none touch-none"
+            className="chart-container absolute inset-0 p-4 pb-2 select-none touch-none min-h-[500px]"
             tabIndex={-1}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
