@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-slate-950;
+}
+
+
+.recharts-wrapper,
+.recharts-wrapper *,
+.chart-container,
+.chart-container * {
+  outline: none !important;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  filter: invert(1);
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
