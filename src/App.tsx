@@ -164,7 +164,7 @@ export default function App() {
 
   const loadSampleData = () => {
     setLoading(true); setFileName("sample_5000pts.xml"); setError(null); setPage(1);
-    setTimeout(() => { setRawData(generateSampleData()); setResolution('HOURLY'); setLoading(false); }, 300);
+    setTimeout(() => { setRawData(generateSampleData()); setResolution('DAILY'); setLoading(false); }, 300);
   };
 
   const handleViewInput = (field: 'start' | 'end', value: string) => {

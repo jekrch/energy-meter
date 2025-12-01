@@ -16,7 +16,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
     return (
         <div className="bg-slate-900 rounded-xl border border-slate-800 p-3 sm:p-4 flex flex-col gap-3 shadow-sm hover:border-slate-700 transition-colors min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/50 pb-2">
-                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 whitespace-nowrap">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 whitespace-nowrap h-8">
                     <Calendar className="w-4 h-4 text-slate-500 shrink-0" /> Date Range
                 </span>
                 {isZoomed && (
