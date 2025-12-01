@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Loader2, Activity, AlertCircle, Calendar } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Calendar } from 'lucide-react';
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, RESOLUTIONS } from './types';
@@ -12,6 +12,7 @@ import { useAnalysis } from './hooks/useAnalysis';
 // Components
 import { StatCard } from './components/common/StatCard';
 import { TabButton } from './components/common/TabButton';
+import { PulseLoader, LoadingOverlay, StatusChip } from './components/common/PulseLoader';
 import { UploadSection } from './components/dashboard/UploadSection';
 import { DateRangeControls } from './components/dashboard/DateRangeControls';
 import { MainChart } from './components/charts/MainChart';
@@ -75,12 +76,27 @@ export default function App() {
   useEffect(() => {
     const currentProcess = ++processingRef.current;
     if (!viewData.length) { setAggregatedData([]); return; }
+    
     setIsProcessing(true);
-    processDataAsync(viewData, resolution).then(result => {
-      if (currentProcess === processingRef.current) {
-        setAggregatedData(result);
-        setIsProcessing(false);
-      }
+    
+    // Use requestAnimationFrame to ensure the loading state renders before processing
+    requestAnimationFrame(() => {
+      const startTime = Date.now();
+      const MIN_LOADING_TIME = 300; // Minimum ms to show loader
+      
+      processDataAsync(viewData, resolution).then(result => {
+        if (currentProcess === processingRef.current) {
+          const elapsed = Date.now() - startTime;
+          const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
+          
+          setTimeout(() => {
+            if (currentProcess === processingRef.current) {
+              setAggregatedData(result);
+              setIsProcessing(false);
+            }
+          }, remainingTime);
+        }
+      });
     });
   }, [viewData, resolution]);
 
@@ -187,14 +203,25 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
+        {/* Upload State with Full-Page Loader */}
         {!rawData ? (
-          /* Empty State / Upload */
-          <UploadSection
-            onUpload={handleFileUpload}
-            onLoadSample={loadSampleData}
-            loading={loading}
-            error={error}
-          />
+          loading ? (
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <PulseLoader
+                variant="energy"
+                size="lg"
+                message="Parsing Green Button XML..."
+                subMessage="Extracting energy readings"
+              />
+            </div>
+          ) : (
+            <UploadSection
+              onUpload={handleFileUpload}
+              onLoadSample={loadSampleData}
+              loading={loading}
+              error={error}
+            />
+          )
         ) : (
           stats && (
             <div className="space-y-4">
@@ -253,16 +280,9 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Status Chip */}
+                        {/* Status Chip - Updated */}
                         <div className="flex items-center gap-2 ml-auto sm:ml-0">
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
-                            {isProcessing ? (
-                              <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
-                            ) : (
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            )}
-                            <span className="text-xs text-slate-400 font-medium">{chartData.length.toLocaleString()}</span>
-                          </div>
+                          <StatusChip loading={isProcessing} count={chartData.length} />
                         </div>
                       </>
                     )}
@@ -270,26 +290,18 @@ export default function App() {
                     {activeTab === 'analysis' && (
                       <>
                         <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
-                          {analysisProcessing ? (
-                            <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
-                          ) : (
-                            <TrendingUp className="w-3 h-3 text-emerald-500" />
-                          )}
-                          <span className="text-xs text-slate-400 font-medium">
-                            {groupBy === 'hour' ? '24h' : groupBy === 'dayOfWeek' ? '7d' : '12mo'} view
-                          </span>
-                        </div>
+                        <StatusChip
+                          loading={analysisProcessing}
+                          count={0}
+                          label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'}
+                        />
                       </>
                     )}
 
                     {activeTab === 'table' && (
                       <>
                         <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
-                          <FileText className="w-3 h-3 text-slate-500" />
-                          <span className="text-xs text-slate-400 font-medium">{viewData.length.toLocaleString()} rows</span>
-                        </div>
+                        <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />
                       </>
                     )}
 
@@ -299,17 +311,33 @@ export default function App() {
                 {/* Tab Content Areas */}
                 <div className="flex-1 relative min-h-[300px]">
                   {activeTab === 'chart' && (
-                    <MainChart
-                      data={chartData}
-                      resolution={resolution}
-                      isProcessing={isProcessing}
-                      spansMultipleDays={spansMultipleDays}
-                      onSelectionChange={handleChartSelection}
-                    />
+                    <>
+                      <LoadingOverlay
+                        visible={isProcessing}
+                        variant="chart"
+                        size="md"
+                        message="Aggregating data..."
+                        subMessage={`Processing ${viewData.length.toLocaleString()} readings`}
+                      />
+                      <MainChart
+                        data={chartData}
+                        resolution={resolution}
+                        isProcessing={isProcessing}
+                        spansMultipleDays={spansMultipleDays}
+                        onSelectionChange={handleChartSelection}
+                      />
+                    </>
                   )}
 
                   {activeTab === 'analysis' && (
                     <div className="min-h-[600px]">
+                      <LoadingOverlay
+                        visible={analysisProcessing}
+                        variant="analysis"
+                        size="md"
+                        message="Analyzing patterns..."
+                        subMessage="Calculating averages and trends"
+                      />
                       <AnalysisPanel
                         filters={analysisFilters}
                         setFilters={setAnalysisFilters}
