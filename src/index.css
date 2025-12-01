@@ -21,3 +21,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   opacity: 0;
 }
+
+
+.recharts-tooltip-cursor {
+  fill: #49596c !important;
+  fill-opacity: 0.8 !important;
+}

@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Calendar } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign } from 'lucide-react';
 
 // Types and Utilities
-import { type DataPoint, type TimeRange, RESOLUTIONS } from './types';
+import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
+import {formatCost, toDollars} from './utils/formatters';
 import { formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB } from './utils/dataUtils';
 
@@ -32,8 +33,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('chart');
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
+  const [metricMode, setMetricMode] = useState<MetricMode>('energy');
 
-  // Time State (simplified - single range for both view and analysis)
+  // Time State
   const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
 
@@ -42,7 +44,7 @@ export default function App() {
   const [analysisView, setAnalysisView] = useState<'averages' | 'timeline'>('averages');
   const [autoZoom, setAutoZoom] = useState(false);
 
-  // Processing Refs (State for the main chart aggregation)
+  // Processing Refs
   const [aggregatedData, setAggregatedData] = useState<DataPoint[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const processingRef = useRef(0);
@@ -58,13 +60,13 @@ export default function App() {
     }
   }, [rawData]);
 
-  // 2. Filter data for current view (used for both chart and analysis)
+  // 2. Filter data for current view
   const viewData = useMemo(() => {
     if (!rawData || !viewRange.start || !viewRange.end) return rawData || [];
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
 
-  // 3. Hook: Complex Analysis Logic (Filtering by day/hour/month)
+  // 3. Hook: Complex Analysis Logic
   const {
     filters: analysisFilters,
     setFilters: setAnalysisFilters,
@@ -72,17 +74,16 @@ export default function App() {
     isProcessing: analysisProcessing
   } = useAnalysis(activeTab, viewData, groupBy);
 
-  // 4. Async Processing for Main Chart (Aggregation/Resolution changes)
+  // 4. Async Processing for Main Chart
   useEffect(() => {
     const currentProcess = ++processingRef.current;
     if (!viewData.length) { setAggregatedData([]); return; }
     
     setIsProcessing(true);
     
-    // Use requestAnimationFrame to ensure the loading state renders before processing
     requestAnimationFrame(() => {
       const startTime = Date.now();
-      const MIN_LOADING_TIME = 300; // Minimum ms to show loader
+      const MIN_LOADING_TIME = 300;
       
       processDataAsync(viewData, resolution).then(result => {
         if (currentProcess === processingRef.current) {
@@ -100,7 +101,7 @@ export default function App() {
     });
   }, [viewData, resolution]);
 
-  // 5. Downsampling for performance (LTTB Algorithm)
+  // 5. Downsampling for performance
   const chartData = useMemo(() => downsampleLTTB(aggregatedData, MAX_CHART_POINTS), [aggregatedData]);
 
   // 6. Computed Stats
@@ -111,15 +112,58 @@ export default function App() {
 
   const stats = useMemo(() => {
     if (!viewData.length) return null;
-    const total = viewData.reduce((a, c) => a + c.value, 0);
-    const peakPoint = viewData.reduce((max, d) => d.value > max.value ? d : max, viewData[0]);
+    
+    const totalValue = viewData.reduce((a, c) => a + c.value, 0);
+    const totalCost = viewData.reduce((a, c) => a + (c.cost ?? 0), 0);
+    
+    // Aggregate by day to find peak day
+    const dailyTotals = new Map<string, { value: number; cost: number; date: Date }>();
+    for (const d of viewData) {
+      const date = new Date(d.timestamp * 1000);
+      const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+      const existing = dailyTotals.get(dayKey);
+      if (existing) {
+        existing.value += d.value;
+        existing.cost += d.cost ?? 0;
+      } else {
+        dailyTotals.set(dayKey, { 
+          value: d.value, 
+          cost: d.cost ?? 0, 
+          date: new Date(date.getFullYear(), date.getMonth(), date.getDate())
+        });
+      }
+    }
+    
+    // Find peak day
+    let peakDay = { value: 0, cost: 0, date: new Date() };
+    for (const day of dailyTotals.values()) {
+      if (day.value > peakDay.value) {
+        peakDay = day;
+      }
+    }
+    
+    // Calculate effective rate (cost per kWh)
+    const totalKwh = totalValue / 1000000; // mWh -> kWh
+    const totalDollars = toDollars(totalCost);
+    const effectiveRate = totalKwh > 0 ? totalDollars / totalKwh : 0;
+    
+    // Calculate average daily usage/cost
+    const numDays = dailyTotals.size;
+    const avgDailyValue = numDays > 0 ? Math.round(totalValue / numDays) : 0;
+    const avgDailyCost = numDays > 0 ? Math.round(totalCost / numDays) : 0;
+    
     return {
-      total: total.toLocaleString(),
-      average: Math.round(total / viewData.length).toLocaleString(),
-      peak: peakPoint.value.toLocaleString(),
-      peakDate: formatShortDate(new Date(peakPoint.timestamp * 1000)),
+      total: totalValue.toLocaleString(),
+      totalCost: formatCost(totalCost),
+      average: avgDailyValue.toLocaleString(),
+      avgCost: formatCost(avgDailyCost),
+      peak: peakDay.value.toLocaleString(),
+      peakCost: formatCost(peakDay.cost),
+      peakDate: formatShortDate(peakDay.date),
       readings: viewData.length,
-      range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`
+      numDays,
+      range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`,
+      effectiveRate: `${effectiveRate.toFixed(3)}/kWh`
     };
   }, [viewData]);
 
@@ -130,17 +174,31 @@ export default function App() {
     return Math.ceil(max / magnitude) * magnitude;
   }, [rawData]);
 
+  const yAxisMaxCost = useMemo(() => {
+    if (!rawData?.length) return 100000;
+    const max = Math.max(...rawData.map(d => d.cost ?? 0));
+    if (max === 0) return 100000;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
+    return Math.ceil(max / magnitude) * magnitude;
+  }, [rawData]);
+
   const currentAnalysisMax = useMemo(() => {
     const data = analysisView === 'averages' ? analysisResults.averages : analysisResults.timeline;
-    const key = analysisView === 'averages' ? 'average' : 'value';
     if (!data.length) return 0;
-    return Math.max(...data.map(d => d[key]));
-  }, [analysisResults, analysisView]);
+    
+    if (metricMode === 'energy') {
+      const key = analysisView === 'averages' ? 'average' : 'value';
+      return Math.max(...data.map(d => d[key] || 0));
+    } else {
+      const key = analysisView === 'averages' ? 'avgCost' : 'cost';
+      return Math.max(...data.map(d => d[key] || 0));
+    }
+  }, [analysisResults, analysisView, metricMode]);
 
   const analysisDomain = useMemo((): [number, number] => {
     if (autoZoom) return [0, Math.ceil(currentAnalysisMax * 1.1)];
-    return [0, yAxisMax];
-  }, [autoZoom, currentAnalysisMax, yAxisMax]);
+    return [0, metricMode === 'energy' ? yAxisMax : yAxisMaxCost];
+  }, [autoZoom, currentAnalysisMax, yAxisMax, yAxisMaxCost, metricMode]);
 
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
@@ -203,7 +261,7 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
-        {/* Upload State with Full-Page Loader */}
+        {/* Upload State */}
         {!rawData ? (
           loading ? (
             <div className="flex items-center justify-center min-h-[60vh]">
@@ -227,10 +285,10 @@ export default function App() {
             <div className="space-y-4">
               {/* Top Stats Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit="Wh" />
-                <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Interval" value={stats.average} unit="Wh" />
-                <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak" value={stats.peak} unit="Wh" sub={stats.peakDate} />
-                <StatCard icon={<Calendar className="w-5 h-5 text-purple-400" />} label="Range" value={stats.range} sub={`${stats.readings} readings`} />
+                <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit="Wh" sub={stats.totalCost} />
+                <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
+                <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit="Wh" sub={stats.avgCost} />
+                <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit="Wh" sub={`${stats.peakDate} • ${stats.peakCost}`} />
               </div>
 
               {/* Date Controls */}
@@ -244,24 +302,55 @@ export default function App() {
               {/* Main Tabbed Interface */}
               <div className="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
 
-                {/* Tab Header & Action Bar - Unified Toolbar */}
+                {/* Tab Header & Action Bar */}
                 <div className="border-b border-slate-800 px-4 md:px-6 py-3">
                   <div className="flex items-center gap-3 flex-wrap">
 
-                    {/* Tabs - Primary Navigation */}
+                    {/* Tabs */}
                     <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
                       <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<BarChart2 className="w-4 h-4" />}>Chart</TabButton>
                       <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<TrendingUp className="w-4 h-4" />}>Analysis</TabButton>
                       <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                     </div>
 
-                    {/* Contextual Controls - Only show when relevant */}
+                    {/* Metric Toggle - show for chart and analysis */}
+                    {(activeTab === 'chart' || activeTab === 'analysis') && (
+                      <>
+                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Metric</span>
+                          <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
+                            <button
+                              onClick={() => setMetricMode('energy')}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${
+                                metricMode === 'energy'
+                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                              }`}
+                            >
+                              <Zap className="w-3 h-3" />
+                              <span className="hidden sm:inline">Energy</span>
+                            </button>
+                            <button
+                              onClick={() => setMetricMode('cost')}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${
+                                metricMode === 'cost'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                              }`}
+                            >
+                              <DollarSign className="w-3 h-3" />
+                              <span className="hidden sm:inline">Cost</span>
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Chart-specific controls */}
                     {activeTab === 'chart' && (
                       <>
-                        {/* Subtle separator */}
                         <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-
-                        {/* Resolution Picker */}
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
                           <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
@@ -279,8 +368,6 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-
-                        {/* Status Chip - Updated */}
                         <div className="flex items-center gap-2 ml-auto sm:ml-0">
                           <StatusChip loading={isProcessing} count={chartData.length} />
                         </div>
@@ -325,6 +412,7 @@ export default function App() {
                         isProcessing={isProcessing}
                         spansMultipleDays={spansMultipleDays}
                         onSelectionChange={handleChartSelection}
+                        metricMode={metricMode}
                       />
                     </>
                   )}
@@ -350,6 +438,7 @@ export default function App() {
                         autoZoom={autoZoom}
                         setAutoZoom={setAutoZoom}
                         analysisDomain={analysisDomain}
+                        metricMode={metricMode}
                       />
                     </div>
                   )}

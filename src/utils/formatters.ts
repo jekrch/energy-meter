@@ -12,3 +12,25 @@ export const formatDateTimeLocal = (ts: number | null): string => {
 
 export const parseDateTimeLocal = (str: string): number | null =>
   str ? Math.floor(new Date(str).getTime() / 1000) : null;
+
+// Helper to convert raw cost integer to dollars
+export const toDollars = (cost: number): number => cost / 100000;
+
+// Format cost as currency string
+export const formatCost = (cost: number): string => {
+  const dollars = toDollars(cost);
+  return dollars.toLocaleString('en-US', { 
+    style: 'currency', 
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2 
+  });
+};
+
+// Format cost for axis labels (compact)
+export const formatCostAxis = (cost: number): string => {
+  const dollars = toDollars(cost);
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}k`;
+  if (dollars >= 1) return `$${dollars.toFixed(0)}`;
+  return `${(dollars * 100).toFixed(0)}¢`;
+};

@@ -42,7 +42,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                                 style={{ colorScheme: 'dark' }}
                                 value={formatDateTimeLocal(viewRange[field])}
                                 onChange={(e) => onViewChange(field, e.target.value)}
-                                className="appearance-none w-full max-w-full block m-0 min-w-0 bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 pr-10 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner box-border"
+                                className="appearance-none w-full max-w-full block m-0 min-w-0 bg-slate-950/50 border border-slate-700/50 rounded-lg px-3 py-2 pr-10 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner box-border h-11"
                             />
                             <CalendarDays 
                                 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors" 

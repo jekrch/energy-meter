@@ -9,6 +9,8 @@ import {
 import { formatAxisValue } from '../../utils/formatters';
 import { FilterChip } from '../common/FilterChip';
 import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
+import {formatCost, formatCostAxis} from '../../utils/formatters';
+import type { MetricMode } from '../charts/MainChart';
 
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
@@ -26,21 +28,33 @@ interface AnalysisPanelProps {
     autoZoom: boolean;
     setAutoZoom: React.Dispatch<React.SetStateAction<boolean>>;
     analysisDomain: [number, number];
+    metricMode: MetricMode;
 }
 
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
-    results, isProcessing, autoZoom, setAutoZoom, analysisDomain
+    results, isProcessing, autoZoom, setAutoZoom, analysisDomain, metricMode
 }: AnalysisPanelProps) {
 
     // --- ENFORCE DEFAULTS ON MOUNT ---
     React.useEffect(() => {
-        setGroupBy('month');       // Default to Monthly chunks
-        setAnalysisView('averages'); // Default to Averaged view
-        setAutoZoom(true);         // Default to Auto Fit
+        setGroupBy('month');
+        setAnalysisView('averages');
+        setAutoZoom(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Empty dependency array ensures this runs only once when the panel mounts
+    }, []);
 
+    // Chart colors based on metric mode
+    const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
+    const yAxisFormatter = metricMode === 'energy' ? formatAxisValue : formatCostAxis;
+
+    // Determine which data key to use based on view and metric mode
+    const getDataKey = () => {
+        if (analysisView === 'averages') {
+            return metricMode === 'energy' ? 'average' : 'avgCost';
+        }
+        return metricMode === 'energy' ? 'value' : 'cost';
+    };
 
     // Handlers for filters
     const toggleDay = (day: number) => {
@@ -181,29 +195,54 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             />
                             <YAxis
                                 stroke="#94a3b8" fontSize={10} tickLine={true}
-                                axisLine={false} tickFormatter={formatAxisValue} width={45} domain={analysisDomain}
+                                axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain}
                             />
                             <Tooltip content={({ active, payload }) => {
                                 if (active && payload?.length) {
                                     const d = payload[0].payload;
+                                    const energyVal = analysisView === 'averages' ? d.average : d.value;
+                                    const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
+                                    const hasCost = typeof costVal === 'number' && costVal > 0;
+                                    
+                                    // Labels based on view
+                                    const energyLabel = analysisView === 'averages' ? 'Wh avg' : 'Wh total';
+                                    const costLabel = analysisView === 'averages' ? 'avg' : 'total';
+                                    const countLabel = analysisView === 'averages' 
+                                        ? `${d.count} ${groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'} averaged`
+                                        : `${d.count.toLocaleString()} readings`;
+
                                     return (
-                                        <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg">
-                                            <p className="text-slate-400 text-xs font-semibold mb-1">{analysisView === 'averages' ? d.label : d.fullDate}</p>
-                                            <p className="text-emerald-400 font-bold text-lg">{analysisView === 'averages' ? d.average.toLocaleString() : d.value.toLocaleString()} <span className="text-xs text-slate-500 font-normal">Wh avg</span></p>
-                                            <p className="text-xs text-slate-500 mt-1">{d.count.toLocaleString()} readings</p>
+                                        <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[150px]">
+                                            <p className="text-slate-400 text-xs font-semibold mb-2">
+                                                {analysisView === 'averages' ? d.label : d.fullDate}
+                                            </p>
+                                            
+                                            {/* Energy */}
+                                            <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                                                {energyVal.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{energyLabel}</span>
+                                            </p>
+                                            
+                                            {/* Cost */}
+                                            {hasCost && (
+                                                <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                                                    {formatCost(costVal)} <span className="text-xs text-slate-500 font-normal">{costLabel}</span>
+                                                </p>
+                                            )}
+                                            
+                                            <p className="text-xs text-slate-500 mt-2">{countLabel}</p>
                                         </div>
                                     );
                                 }
                                 return null;
                             }} />
                             <Bar
-                                dataKey={analysisView === 'averages' ? "average" : "value"}
-                                fill="#10b981"
+                                dataKey={getDataKey()}
+                                fill={chartColor}
                                 radius={[4, 4, 0, 0]}
                                 isAnimationActive={false}
                             >
                                 {analysisView === 'averages' && results.averages.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.count > 0 ? '#10b981' : '#334155'} />
+                                    <Cell key={`cell-${index}`} fill={entry.count > 0 ? chartColor : '#334155'} />
                                 ))}
                             </Bar>
                         </BarChart>

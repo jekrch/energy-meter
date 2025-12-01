@@ -5,7 +5,9 @@ import {
 import { Loader2 } from 'lucide-react';
 import { formatAxisValue } from '../../utils/formatters';
 import type { DataPoint } from '../../types';
-import { CustomTooltip } from '../common/CustomTooltip';
+import { formatCost, formatCostAxis } from '../../utils/formatters';
+
+export type MetricMode = 'energy' | 'cost';
 
 interface MainChartProps {
     data: DataPoint[];
@@ -13,19 +15,65 @@ interface MainChartProps {
     isProcessing: boolean;
     spansMultipleDays: boolean;
     onSelectionChange: (range: { start: number; end: number }) => void;
+    metricMode: MetricMode;
 }
+
+// Tooltip with cost support
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ payload: DataPoint & { label?: string } }>;
+    resolution?: string;
+    metricMode: MetricMode;
+}
+
+const CustomTooltip = React.memo(function CustomTooltip({ active, payload, resolution, metricMode }: CustomTooltipProps) {
+    if (active && payload?.length) {
+        const data = payload[0].payload;
+        const hasCost = typeof data.cost === 'number' && data.cost > 0;
+        
+        return (
+            <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[140px]">
+                <p className="text-slate-400 text-xs font-semibold mb-2">
+                    {data.fullDate || data.label}
+                </p>
+                
+                {/* Energy - primary when in energy mode */}
+                <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                    {data.value.toLocaleString()} <span className="text-xs text-slate-500 font-normal">Wh</span>
+                </p>
+                
+                {/* Cost - primary when in cost mode */}
+                {hasCost && (
+                    <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                        {formatCost(data.cost)}
+                    </p>
+                )}
+                
+                {resolution && resolution !== 'RAW' && resolution !== 'HOURLY' && (
+                    <p className="text-xs text-slate-500 mt-2 italic">Aggregated total</p>
+                )}
+            </div>
+        );
+    }
+    return null;
+});
 
 export const MainChart = React.memo(function MainChart({
     data,
     resolution,
     isProcessing,
     spansMultipleDays,
-    onSelectionChange
+    onSelectionChange,
+    metricMode
 }: MainChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [dragging, setDragging] = React.useState(false);
     const [dragAnchor, setDragAnchor] = React.useState<number | null>(null);
     const [dragCurrent, setDragCurrent] = React.useState<number | null>(null);
+
+    // Chart colors based on metric mode
+    const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981'; // amber for energy, emerald for cost
+    const gradientId = metricMode === 'energy' ? 'colorEnergy' : 'colorCost';
 
     // Helper to find data point from mouse X coordinate
     const getTimestampFromMouseX = useCallback((clientX: number): number | null => {
@@ -85,6 +133,9 @@ export const MainChart = React.memo(function MainChart({
         }
     };
 
+    // Axis formatter based on mode
+    const yAxisFormatter = metricMode === 'energy' ? formatAxisValue : formatCostAxis;
+
     return (
         <div
             ref={chartContainerRef}
@@ -107,9 +158,9 @@ export const MainChart = React.memo(function MainChart({
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                     <defs>
-                        <linearGradient id="colorUsage" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={chartColor} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
                         </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
@@ -127,30 +178,30 @@ export const MainChart = React.memo(function MainChart({
                         fontSize={10}
                         tickLine={true}
                         axisLine={false}
-                        tickFormatter={formatAxisValue}
-                        width={45}
+                        tickFormatter={yAxisFormatter}
+                        width={50}
                     />
-                    <Tooltip content={<CustomTooltip resolution={resolution} />} />
+                    <Tooltip content={<CustomTooltip resolution={resolution} metricMode={metricMode} />} />
 
                     {/* Show ReferenceArea only while actively dragging */}
                     {dragging && getDragLabel(true) && getDragLabel(false) && (
                         <ReferenceArea
                             x1={getDragLabel(true)}
                             x2={getDragLabel(false)}
-                            fill="#10b981"
+                            fill={chartColor}
                             fillOpacity={0.3}
-                            stroke="#10b981"
+                            stroke={chartColor}
                             strokeWidth={2}
                         />
                     )}
 
                     <Area
                         type="monotone"
-                        dataKey="value"
-                        stroke="#10b981"
+                        dataKey={metricMode === 'energy' ? 'value' : 'cost'}
+                        stroke={chartColor}
                         strokeWidth={2}
                         fillOpacity={1}
-                        fill="url(#colorUsage)"
+                        fill={`url(#${gradientId})`}
                         animationDuration={300}
                         isAnimationActive={data.length < 500}
                     />
