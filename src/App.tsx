@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Filter, Loader2, Activity, AlertCircle, Calendar } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Loader2, Activity, AlertCircle, Calendar } from 'lucide-react';
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, RESOLUTIONS } from './types';
@@ -32,10 +32,9 @@ export default function App() {
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
 
-  // Time/Selection State
+  // Time State (simplified - single range for both view and analysis)
   const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
-  const [selection, setSelection] = useState<TimeRange>({ start: null, end: null });
 
   // Analysis State
   const [groupBy, setGroupBy] = useState<'dayOfWeek' | 'month' | 'hour'>('hour');
@@ -55,20 +54,14 @@ export default function App() {
       const bounds = { start: rawData[0].timestamp, end: rawData[rawData.length - 1].timestamp };
       setDataBounds(bounds);
       setViewRange(bounds);
-      setSelection(bounds);
     }
   }, [rawData]);
 
-  // 2. Filter data for View (Zooming) and Selection (Analysis)
+  // 2. Filter data for current view (used for both chart and analysis)
   const viewData = useMemo(() => {
     if (!rawData || !viewRange.start || !viewRange.end) return rawData || [];
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
-
-  const selectionData = useMemo(() => {
-    if (!rawData || !selection.start || !selection.end) return [];
-    return rawData.filter(d => d.timestamp >= selection.start! && d.timestamp <= selection.end!);
-  }, [rawData, selection]);
 
   // 3. Hook: Complex Analysis Logic (Filtering by day/hour/month)
   const {
@@ -76,7 +69,7 @@ export default function App() {
     setFilters: setAnalysisFilters,
     results: analysisResults,
     isProcessing: analysisProcessing
-  } = useAnalysis(activeTab, selectionData, groupBy);
+  } = useAnalysis(activeTab, viewData, groupBy);
 
   // 4. Async Processing for Main Chart (Aggregation/Resolution changes)
   useEffect(() => {
@@ -101,16 +94,18 @@ export default function App() {
   }, [chartData]);
 
   const stats = useMemo(() => {
-    if (!selectionData.length) return null;
-    const total = selectionData.reduce((a, c) => a + c.value, 0);
+    if (!viewData.length) return null;
+    const total = viewData.reduce((a, c) => a + c.value, 0);
+    const peakPoint = viewData.reduce((max, d) => d.value > max.value ? d : max, viewData[0]);
     return {
       total: total.toLocaleString(),
-      average: Math.round(total / selectionData.length).toLocaleString(),
-      peak: Math.max(...selectionData.map(d => d.value)).toLocaleString(),
-      readings: selectionData.length,
-      range: `${formatShortDate(new Date(selectionData[0].timestamp * 1000))} – ${formatShortDate(new Date(selectionData[selectionData.length - 1].timestamp * 1000))}`
+      average: Math.round(total / viewData.length).toLocaleString(),
+      peak: peakPoint.value.toLocaleString(),
+      peakDate: formatShortDate(new Date(peakPoint.timestamp * 1000)),
+      readings: viewData.length,
+      range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`
     };
-  }, [selectionData]);
+  }, [viewData]);
 
   const yAxisMax = useMemo(() => {
     if (!rawData?.length) return 1000;
@@ -130,6 +125,8 @@ export default function App() {
     if (autoZoom) return [0, Math.ceil(currentAnalysisMax * 1.1)];
     return [0, yAxisMax];
   }, [autoZoom, currentAnalysisMax, yAxisMax]);
+
+  const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
   // --- Handlers ---
 
@@ -156,20 +153,22 @@ export default function App() {
 
   const handleViewInput = (field: 'start' | 'end', value: string) => {
     const ts = parseDateTimeLocal(value);
-    if (ts) { setViewRange(prev => ({ ...prev, [field]: ts })); setPage(1); }
-  };
-
-  const handleSelectionInput = (field: 'start' | 'end', value: string) => {
-    const ts = parseDateTimeLocal(value);
     if (ts && dataBounds.start !== null && dataBounds.end !== null) {
       const clamped = Math.max(dataBounds.start, Math.min(dataBounds.end, ts));
-      setSelection(prev => ({ ...prev, [field]: clamped }));
+      setViewRange(prev => ({ ...prev, [field]: clamped }));
       setPage(1);
     }
   };
 
-  const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
-  const isSelectionSubset = selection.start !== null && dataBounds.start !== null && (selection.start !== dataBounds.start || selection.end !== dataBounds.end);
+  const handleZoomOut = () => {
+    setViewRange({ start: dataBounds.start, end: dataBounds.end });
+    setPage(1);
+  };
+
+  const handleChartSelection = (range: { start: number; end: number }) => {
+    setViewRange({ start: range.start, end: range.end });
+    setPage(1);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30">
@@ -198,66 +197,114 @@ export default function App() {
           />
         ) : (
           stats && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Top Stats Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isSelectionSubset ? "Selection Total" : "Total"} value={stats.total} unit="Wh" />
+                <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit="Wh" />
                 <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Interval" value={stats.average} unit="Wh" />
-                <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak" value={stats.peak} unit="Wh" />
+                <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak" value={stats.peak} unit="Wh" sub={stats.peakDate} />
                 <StatCard icon={<Calendar className="w-5 h-5 text-purple-400" />} label="Range" value={stats.range} sub={`${stats.readings} readings`} />
               </div>
 
-              {/* Date Controls (View Range & Selection Range) */}
+              {/* Date Controls */}
               <DateRangeControls
                 viewRange={viewRange}
-                selection={selection}
                 isZoomed={isZoomed}
-                isSelectionSubset={isSelectionSubset}
                 onViewChange={handleViewInput}
-                onSelectionChange={handleSelectionInput}
-                onZoomOut={() => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); }}
-                onZoomToSelection={() => { if (selection.start && selection.end) { setViewRange({ start: selection.start, end: selection.end }); setPage(1); } }}
-                onResetSelection={() => { if (dataBounds.start && dataBounds.end) setSelection({ start: dataBounds.start, end: dataBounds.end }); }}
+                onZoomOut={handleZoomOut}
               />
 
               {/* Main Tabbed Interface */}
               <div className="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
 
-                {/* Tab Header & Action Bar */}
-                <div className="border-b border-slate-800 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <h3 className="font-bold text-lg text-slate-200">Usage</h3>
-                    <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700/50">
+                {/* Tab Header & Action Bar - Unified Toolbar */}
+                <div className="border-b border-slate-800 px-4 md:px-6 py-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+
+                    {/* Tabs - Primary Navigation */}
+                    <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
                       <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<BarChart2 className="w-4 h-4" />}>Chart</TabButton>
                       <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<TrendingUp className="w-4 h-4" />}>Analysis</TabButton>
                       <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                     </div>
-                  </div>
 
-                  {activeTab === 'chart' && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Filter className="w-4 h-4 text-slate-500" />
-                      <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700/50">
-                        {Object.keys(RESOLUTIONS).map((key) => (
-                          <button key={key} onClick={() => setResolution(key)} className={`px-2 md:px-3 py-1 text-xs font-semibold rounded-md transition-all ${resolution === key ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}>{RESOLUTIONS[key].label.split(' ')[0]}</button>
-                        ))}
-                      </div>
-                      <span className="text-slate-500 text-xs flex items-center gap-1">({chartData.length} pts) • Drag to select {isProcessing && <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />}</span>
-                    </div>
-                  )}
+                    {/* Contextual Controls - Only show when relevant */}
+                    {activeTab === 'chart' && (
+                      <>
+                        {/* Subtle separator */}
+                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+
+                        {/* Resolution Picker */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
+                          <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
+                            {Object.keys(RESOLUTIONS).map((key) => (
+                              <button
+                                key={key}
+                                onClick={() => setResolution(key)}
+                                className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key
+                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                  }`}
+                              >
+                                {RESOLUTIONS[key].label.split(' ')[0]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Status Chip */}
+                        <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
+                            {isProcessing ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            )}
+                            <span className="text-xs text-slate-400 font-medium">{chartData.length.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {activeTab === 'analysis' && (
+                      <>
+                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
+                          {analysisProcessing ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                          ) : (
+                            <TrendingUp className="w-3 h-3 text-emerald-500" />
+                          )}
+                          <span className="text-xs text-slate-400 font-medium">
+                            {groupBy === 'hour' ? '24h' : groupBy === 'dayOfWeek' ? '7d' : '12mo'} view
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {activeTab === 'table' && (
+                      <>
+                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
+                          <FileText className="w-3 h-3 text-slate-500" />
+                          <span className="text-xs text-slate-400 font-medium">{viewData.length.toLocaleString()} rows</span>
+                        </div>
+                      </>
+                    )}
+
+                  </div>
                 </div>
 
                 {/* Tab Content Areas */}
-                <div className="flex-1 min-h-0 relative min-h-[300px]">
+                <div className="flex-1 relative min-h-[300px]">
                   {activeTab === 'chart' && (
                     <MainChart
                       data={chartData}
                       resolution={resolution}
                       isProcessing={isProcessing}
                       spansMultipleDays={spansMultipleDays}
-                      selection={selection}
-                      isSelectionSubset={isSelectionSubset}
-                      onSelectionChange={(range) => { setSelection({ start: range.start, end: range.end }); setPage(1); }}
+                      onSelectionChange={handleChartSelection}
                     />
                   )}
 
@@ -281,11 +328,11 @@ export default function App() {
 
                   {activeTab === 'table' && (
                     <TableView
-                      data={selectionData}
+                      data={viewData}
                       page={page}
                       setPage={setPage}
                       rowsPerPage={ROWS_PER_PAGE}
-                      isSelectionSubset={isSelectionSubset}
+                      isSelectionSubset={isZoomed}
                     />
                   )}
                 </div>

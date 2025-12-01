@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { formatAxisValue } from '../../utils/formatters';
-import type { DataPoint, TimeRange } from '../../types';
+import type { DataPoint } from '../../types';
 import { CustomTooltip } from '../common/CustomTooltip';
 
 interface MainChartProps {
@@ -12,8 +12,6 @@ interface MainChartProps {
     resolution: string;
     isProcessing: boolean;
     spansMultipleDays: boolean;
-    selection: TimeRange;
-    isSelectionSubset: boolean;
     onSelectionChange: (range: { start: number; end: number }) => void;
 }
 
@@ -22,8 +20,6 @@ export const MainChart = React.memo(function MainChart({
     resolution,
     isProcessing,
     spansMultipleDays,
-    selection,
-    isSelectionSubset,
     onSelectionChange
 }: MainChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -73,10 +69,12 @@ export const MainChart = React.memo(function MainChart({
         try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { }
     }, [dragging, dragAnchor, dragCurrent, onSelectionChange]);
 
-    // Helpers for ReferenceArea rendering
-    const getSelectionLabel = (ts: number | null, findFirst: boolean) => {
-        if (ts === null || !data.length) return undefined;
-        if (findFirst) {
+    // Helper for drag ReferenceArea label
+    const getDragLabel = (isStart: boolean): string | undefined => {
+        if (!dragging || dragAnchor === null || dragCurrent === null || !data.length) return undefined;
+        const ts = isStart ? Math.min(dragAnchor, dragCurrent) : Math.max(dragAnchor, dragCurrent);
+        
+        if (isStart) {
             const found = data.find(d => d.timestamp >= ts);
             return found?.fullDate;
         } else {
@@ -85,12 +83,6 @@ export const MainChart = React.memo(function MainChart({
             }
             return data[data.length - 1]?.fullDate;
         }
-    };
-
-    const getDragLabel = (isStart: boolean) => {
-        if (!dragging || dragAnchor === null || dragCurrent === null) return undefined;
-        const ts = isStart ? Math.min(dragAnchor, dragCurrent) : Math.max(dragAnchor, dragCurrent);
-        return getSelectionLabel(ts, isStart);
     };
 
     return (
@@ -140,6 +132,7 @@ export const MainChart = React.memo(function MainChart({
                     />
                     <Tooltip content={<CustomTooltip resolution={resolution} />} />
 
+                    {/* Show ReferenceArea only while actively dragging */}
                     {dragging && getDragLabel(true) && getDragLabel(false) && (
                         <ReferenceArea
                             x1={getDragLabel(true)}
@@ -148,18 +141,6 @@ export const MainChart = React.memo(function MainChart({
                             fillOpacity={0.3}
                             stroke="#10b981"
                             strokeWidth={2}
-                        />
-                    )}
-
-                    {!dragging && isSelectionSubset && getSelectionLabel(selection.start, true) && getSelectionLabel(selection.end, false) && (
-                        <ReferenceArea
-                            x1={getSelectionLabel(selection.start, true)}
-                            x2={getSelectionLabel(selection.end, false)}
-                            fill="#10b981"
-                            fillOpacity={0.2}
-                            stroke="#10b981"
-                            strokeOpacity={0.6}
-                            strokeDasharray="4 2"
                         />
                     )}
 
