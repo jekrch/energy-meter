@@ -3,9 +3,9 @@ import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Doll
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
-import {formatCost, toDollars} from './utils/formatters';
+import { formatCost, toDollars } from './utils/formatters';
 import { formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB } from './utils/dataUtils';
+import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
 
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
@@ -19,6 +19,7 @@ import { DateRangeControls } from './components/dashboard/DateRangeControls';
 import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
+import type { BrushDataPoint } from './components/common/RangeBrush';
 
 const ROWS_PER_PAGE = 50;
 const MAX_CHART_POINTS = 800;
@@ -30,7 +31,7 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('chart');
+  const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
   const [metricMode, setMetricMode] = useState<MetricMode>('energy');
@@ -49,6 +50,9 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const processingRef = useRef(0);
 
+  const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
+
+
   // --- Effects & Data Logic ---
 
   // 1. Initialize bounds when data loads
@@ -57,6 +61,9 @@ export default function App() {
       const bounds = { start: rawData[0].timestamp, end: rawData[rawData.length - 1].timestamp };
       setDataBounds(bounds);
       setViewRange(bounds);
+
+      // Create brush overview data once (200 points max - very lightweight)
+      setBrushData(createBrushData(rawData, 200));
     }
   }, [rawData]);
 
@@ -78,18 +85,18 @@ export default function App() {
   useEffect(() => {
     const currentProcess = ++processingRef.current;
     if (!viewData.length) { setAggregatedData([]); return; }
-    
+
     setIsProcessing(true);
-    
+
     requestAnimationFrame(() => {
       const startTime = Date.now();
       const MIN_LOADING_TIME = 300;
-      
+
       processDataAsync(viewData, resolution).then(result => {
         if (currentProcess === processingRef.current) {
           const elapsed = Date.now() - startTime;
           const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
-          
+
           setTimeout(() => {
             if (currentProcess === processingRef.current) {
               setAggregatedData(result);
@@ -112,10 +119,10 @@ export default function App() {
 
   const stats = useMemo(() => {
     if (!viewData.length) return null;
-    
+
     const totalValue = viewData.reduce((a, c) => a + c.value, 0);
     const totalCost = viewData.reduce((a, c) => a + (c.cost ?? 0), 0);
-    
+
     // Aggregate by day to find peak day
     const dailyTotals = new Map<string, { value: number; cost: number; date: Date }>();
     for (const d of viewData) {
@@ -126,14 +133,14 @@ export default function App() {
         existing.value += d.value;
         existing.cost += d.cost ?? 0;
       } else {
-        dailyTotals.set(dayKey, { 
-          value: d.value, 
-          cost: d.cost ?? 0, 
+        dailyTotals.set(dayKey, {
+          value: d.value,
+          cost: d.cost ?? 0,
           date: new Date(date.getFullYear(), date.getMonth(), date.getDate())
         });
       }
     }
-    
+
     // Find peak day
     let peakDay = { value: 0, cost: 0, date: new Date() };
     for (const day of dailyTotals.values()) {
@@ -141,17 +148,17 @@ export default function App() {
         peakDay = day;
       }
     }
-    
+
     // Calculate effective rate (cost per kWh)
     const totalKwh = totalValue / 1000000; // mWh -> kWh
     const totalDollars = toDollars(totalCost);
     const effectiveRate = totalKwh > 0 ? totalDollars / totalKwh : 0;
-    
+
     // Calculate average daily usage/cost
     const numDays = dailyTotals.size;
     const avgDailyValue = numDays > 0 ? Math.round(totalValue / numDays) : 0;
     const avgDailyCost = numDays > 0 ? Math.round(totalCost / numDays) : 0;
-    
+
     return {
       total: totalValue.toLocaleString(),
       totalCost: formatCost(totalCost),
@@ -185,7 +192,7 @@ export default function App() {
   const currentAnalysisMax = useMemo(() => {
     const data = analysisView === 'averages' ? analysisResults.averages : analysisResults.timeline;
     if (!data.length) return 0;
-    
+
     if (metricMode === 'energy') {
       const key = analysisView === 'averages' ? 'average' : 'value';
       return Math.max(...data.map(d => d[key] || 0));
@@ -294,13 +301,16 @@ export default function App() {
               {/* Date Controls */}
               <DateRangeControls
                 viewRange={viewRange}
+                dataBounds={dataBounds}
+                brushData={brushData}
                 isZoomed={isZoomed}
                 onViewChange={handleViewInput}
                 onZoomOut={handleZoomOut}
+                onBrushChange={handleChartSelection}
               />
 
               {/* Main Tabbed Interface */}
-              <div className="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
+              <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
 
                 {/* Tab Header & Action Bar */}
                 <div className="border-b border-slate-800 px-4 md:px-6 py-3">
@@ -308,8 +318,8 @@ export default function App() {
 
                     {/* Tabs */}
                     <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
-                      <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<BarChart2 className="w-4 h-4" />}>Chart</TabButton>
-                      <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<TrendingUp className="w-4 h-4" />}>Analysis</TabButton>
+                      <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
+                      <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
                       <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                     </div>
 
@@ -322,22 +332,20 @@ export default function App() {
                           <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
                             <button
                               onClick={() => setMetricMode('energy')}
-                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${
-                                metricMode === 'energy'
-                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                              }`}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy'
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                }`}
                             >
                               <Zap className="w-3 h-3" />
                               <span className="hidden sm:inline">Energy</span>
                             </button>
                             <button
                               onClick={() => setMetricMode('cost')}
-                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${
-                                metricMode === 'cost'
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                              }`}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                }`}
                             >
                               <DollarSign className="w-3 h-3" />
                               <span className="hidden sm:inline">Cost</span>
@@ -359,8 +367,8 @@ export default function App() {
                                 key={key}
                                 onClick={() => setResolution(key)}
                                 className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
                                   }`}
                               >
                                 {RESOLUTIONS[key].label.split(' ')[0]}
@@ -411,7 +419,6 @@ export default function App() {
                         resolution={resolution}
                         isProcessing={isProcessing}
                         spansMultipleDays={spansMultipleDays}
-                        onSelectionChange={handleChartSelection}
                         metricMode={metricMode}
                       />
                     </>
@@ -439,6 +446,7 @@ export default function App() {
                         setAutoZoom={setAutoZoom}
                         analysisDomain={analysisDomain}
                         metricMode={metricMode}
+                        viewRange={viewRange}
                       />
                     </div>
                   )}

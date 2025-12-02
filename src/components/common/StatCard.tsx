@@ -15,7 +15,7 @@ export const StatCard = React.memo(function StatCard({ icon, label, value, unit,
     const isLongValue = value.length > 12;
 
     return (
-        <div className="bg-slate-900 p-3 sm:p-4 md:p-5 rounded-xl shadow-sm border border-slate-800 flex items-start gap-3">
+        <div className="bg-slate-900 p-3 sm:p-4 md:p-5 rounded-md shadow-sm border border-slate-800 flex items-start gap-3">
             
             <div className="p-2 md:p-3 bg-slate-800 rounded-lg shrink-0 border border-slate-700/50 self-start">
                 {icon}

@@ -1,3 +1,4 @@
+import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
 
@@ -215,3 +216,50 @@ export const generateSampleData = (): DataPoint[] => {
   }
   return points;
 };
+
+/**
+ * Creates a lightweight, downsampled dataset for the brush control.
+ * Uses peak-preserving sampling to maintain visual accuracy.
+ */
+export function createBrushData(data: DataPoint[], maxPoints: number = 200): BrushDataPoint[] {
+    if (!data.length) return [];
+    
+    if (data.length <= maxPoints) {
+        return data.map(d => ({ timestamp: d.timestamp, value: d.value }));
+    }
+    
+    const result: BrushDataPoint[] = [];
+    const step = data.length / maxPoints;
+    
+    for (let i = 0; i < maxPoints; i++) {
+        const startIdx = Math.floor(i * step);
+        const endIdx = Math.floor((i + 1) * step);
+        
+        // Find max value in this bucket for peak visibility
+        let maxVal = data[startIdx].value;
+        let maxIdx = startIdx;
+        
+        for (let j = startIdx; j < endIdx && j < data.length; j++) {
+            if (data[j].value > maxVal) {
+                maxVal = data[j].value;
+                maxIdx = j;
+            }
+        }
+        
+        result.push({ 
+            timestamp: data[maxIdx].timestamp, 
+            value: maxVal 
+        });
+    }
+    
+    // Ensure first and last points match exactly
+    if (result.length > 0) {
+        result[0] = { timestamp: data[0].timestamp, value: data[0].value };
+        result[result.length - 1] = { 
+            timestamp: data[data.length - 1].timestamp, 
+            value: data[data.length - 1].value 
+        };
+    }
+    
+    return result;
+}
