@@ -2,6 +2,8 @@
 
 A web application for monitoring and visualizing energy consumption, built with React, TypeScript, and Vite.
 
+gbmeter.com
+
 ## Tech Stack
 
   * **Runtime/Manager:** Bun
