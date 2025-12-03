@@ -20,6 +20,7 @@ import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
 import type { BrushDataPoint } from './components/common/RangeBrush';
+import { AnimatedBackground } from './components/common/AnimatedBackground';
 
 const ROWS_PER_PAGE = 50;
 const MAX_CHART_POINTS = 800;
@@ -252,7 +253,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30">
+    <AnimatedBackground>
+    <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -467,5 +469,6 @@ export default function App() {
         )}
       </main>
     </div>
+    </AnimatedBackground>
   );
 }
