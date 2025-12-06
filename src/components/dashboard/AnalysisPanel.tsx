@@ -210,7 +210,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             <XAxis dataKey={analysisView === 'averages' ? "label" : "fullDate"} stroke="#94a3b8" fontSize={10} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
-                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={40} />
+                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
                             )}
                             <Tooltip content={({ active, payload }) => {
                                 if (active && payload?.length) {

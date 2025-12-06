@@ -177,7 +177,7 @@ export const MainChart = React.memo(function MainChart({
                                 axisLine={false}
                                 tickFormatter={tempAxisFormatter}
                                 domain={tempDomain}
-                                width={40}
+                                width={25}
                             />
                         )}
                         <Tooltip content={
