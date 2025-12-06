@@ -6,11 +6,11 @@ import {
     Calendar, CalendarDays, Maximize2, Minimize2, Loader2
 } from 'lucide-react';
 import { HourRangeFilter } from '../common/HourRangeFilter';
-import { formatAxisValue } from '../../utils/formatters';
 import { FilterChip } from '../common/FilterChip';
 import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
 import { formatCost, formatCostAxis } from '../../utils/formatters';
 import type { MetricMode } from '../charts/MainChart';
+import { type EnergyUnit, formatEnergyValue, formatEnergyAxis } from '../../utils/energyUnits';
 
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
@@ -30,6 +30,7 @@ interface AnalysisPanelProps {
     analysisDomain: [number, number];
     metricMode: MetricMode;
     viewRange?: { start: number | null; end: number | null };
+    energyUnit: EnergyUnit;
 }
 
 // Check if a time period is complete within the view range
@@ -93,7 +94,7 @@ function addPeriodBounds(
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
     results, isProcessing, autoZoom, setAutoZoom, analysisDomain, metricMode,
-    viewRange
+    viewRange, energyUnit
 }: AnalysisPanelProps) {
 
     // --- ENFORCE DEFAULTS ON MOUNT ---
@@ -107,7 +108,9 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     // Chart colors based on metric mode
     const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
     const incompleteColor = '#64748b'; // slate-500 for incomplete periods
-    const yAxisFormatter = metricMode === 'energy' ? formatAxisValue : formatCostAxis;
+    const yAxisFormatter = metricMode === 'energy'
+        ? (val: number) => formatEnergyAxis(val, energyUnit)
+        : formatCostAxis;
 
     // Process timeline data with period bounds (always compute for both views)
     const timelineWithBounds = React.useMemo(() => {
@@ -267,16 +270,16 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                     const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
                                     const hasCost = typeof costVal === 'number' && costVal > 0;
 
-                                    const energyLabel = analysisView === 'averages' ? 'Wh avg' : 'Wh total';
+                                    const energyLabel = analysisView === 'averages'
+                                        ? `${energyUnit} avg`
+                                        : `${energyUnit} total`;
                                     const costLabel = analysisView === 'averages' ? 'avg' : 'total';
 
-                                    // Different count label based on view
                                     const periodName = groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours';
                                     const countLabel = analysisView === 'averages'
                                         ? `${d.count} complete ${periodName} averaged`
                                         : `${d.count.toLocaleString()} readings`;
 
-                                    // Check if this period is incomplete (timeline) or has no data (averages)
                                     const isIncomplete = analysisView === 'timeline' &&
                                         viewRange?.start && viewRange?.end &&
                                         !isPeriodComplete(d, viewRange.start, viewRange.end);
@@ -299,12 +302,14 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                             ) : (
                                                 <>
                                                     <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                                                        {energyVal.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{energyLabel}</span>
+                                                        {formatEnergyValue(energyVal, energyUnit)}{' '}
+                                                        <span className="text-xs text-slate-500 font-normal">{energyLabel}</span>
                                                     </p>
 
                                                     {hasCost && (
                                                         <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                                                            {formatCost(costVal)} <span className="text-xs text-slate-500 font-normal">{costLabel}</span>
+                                                            {formatCost(costVal)}{' '}
+                                                            <span className="text-xs text-slate-500 font-normal">{costLabel}</span>
                                                         </p>
                                                     )}
 
@@ -322,6 +327,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                 }
                                 return null;
                             }} />
+
                             <Bar
                                 dataKey={getDataKey()}
                                 fill={chartColor}

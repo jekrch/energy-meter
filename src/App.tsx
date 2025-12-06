@@ -6,6 +6,7 @@ import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './
 import { formatCost, toDollars } from './utils/formatters';
 import { formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
+import { type EnergyUnit, ENERGY_UNITS, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
@@ -52,6 +53,7 @@ export default function App() {
   const processingRef = useRef(0);
 
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
+  const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
 
 
   // --- Effects & Data Logic ---
@@ -118,6 +120,13 @@ export default function App() {
     return new Date(chartData[0].timestamp * 1000).toDateString() !== new Date(chartData[chartData.length - 1].timestamp * 1000).toDateString();
   }, [chartData]);
 
+  useEffect(() => {
+    if (rawData && rawData.length > 0) {
+      const maxVal = Math.max(...rawData.map(d => d.value));
+      setEnergyUnit(suggestUnit(maxVal));
+    }
+  }, [rawData]);
+
   const stats = useMemo(() => {
     if (!viewData.length) return null;
 
@@ -161,17 +170,18 @@ export default function App() {
     const avgDailyCost = numDays > 0 ? Math.round(totalCost / numDays) : 0;
 
     return {
-      total: totalValue.toLocaleString(),
+      total: formatEnergyValue(totalValue, energyUnit),
       totalCost: formatCost(totalCost),
-      average: avgDailyValue.toLocaleString(),
+      average: formatEnergyValue(avgDailyValue, energyUnit),
       avgCost: formatCost(avgDailyCost),
-      peak: peakDay.value.toLocaleString(),
+      peak: formatEnergyValue(peakDay.value, energyUnit),
       peakCost: formatCost(peakDay.cost),
       peakDate: formatShortDate(peakDay.date),
       readings: viewData.length,
       numDays,
       range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`,
-      effectiveRate: `${effectiveRate.toFixed(3)}/kWh`
+      effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`,
+      unit: energyUnit,
     };
   }, [viewData]);
 
@@ -254,221 +264,272 @@ export default function App() {
 
   return (
     <AnimatedBackground>
-    <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-emerald-500/10 p-2 rounded-lg"><Plug className="w-6 h-6 text-emerald-500" /></div>
-            <div>
-              <h1 className="text-lg md:text-xl font-bold"><span className="text-emerald-500">GB</span> Energy Meter</h1>
-              {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}
-            </div>
-          </div>
-          {rawData && <button onClick={() => { setRawData(null); setFileName(null); setError(null); }} className="text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded transition-colors">Upload</button>}
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
-        {/* Upload State */}
-        {!rawData ? (
-          loading ? (
-            <div className="flex items-center justify-center min-h-[60vh]">
-              <PulseLoader
-                variant="energy"
-                size="lg"
-                message="Parsing Green Button XML..."
-                subMessage="Extracting energy readings"
-              />
-            </div>
-          ) : (
-            <UploadSection
-              onUpload={handleFileUpload}
-              onLoadSample={loadSampleData}
-              loading={loading}
-              error={error}
-            />
-          )
-        ) : (
-          stats && (
-            <div className="space-y-4">
-              {/* Top Stats Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit="Wh" sub={stats.totalCost} />
-                <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
-                <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit="Wh" sub={stats.avgCost} />
-                <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit="Wh" sub={`${stats.peakDate} • ${stats.peakCost}`} />
+      <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
+        {/* Header */}
+        <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-500/10 p-2 rounded-lg"><Plug className="w-6 h-6 text-emerald-500" /></div>
+              <div>
+                <h1 className="text-lg md:text-xl font-bold"><span className="text-emerald-500">GB</span> Energy Meter</h1>
+                {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}
               </div>
+            </div>
+            {rawData && <button onClick={() => { setRawData(null); setFileName(null); setError(null); }} className="text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded transition-colors">Upload</button>}
+          </div>
+        </header>
 
-              {/* Date Controls */}
-              <DateRangeControls
-                viewRange={viewRange}
-                dataBounds={dataBounds}
-                brushData={brushData}
-                isZoomed={isZoomed}
-                onViewChange={handleViewInput}
-                onZoomOut={handleZoomOut}
-                onBrushChange={handleChartSelection}
+        <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
+          {/* Upload State */}
+          {!rawData ? (
+            loading ? (
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <PulseLoader
+                  variant="energy"
+                  size="lg"
+                  message="Parsing Green Button XML..."
+                  subMessage="Extracting energy readings"
+                />
+              </div>
+            ) : (
+              <UploadSection
+                onUpload={handleFileUpload}
+                onLoadSample={loadSampleData}
+                loading={loading}
+                error={error}
               />
+            )
+          ) : (
+            stats && (
+              <div className="space-y-4">
+                {/* Top Stats Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard
+                    icon={<Zap className="w-5 h-5 text-amber-400" />}
+                    label={isZoomed ? "View Total" : "Total"}
+                    value={stats.total}
+                    unit={stats.unit}
+                    sub={stats.totalCost}
+                  />
+                  <StatCard
+                    icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
+                    label="Total Cost" 
+                    value={stats.totalCost} 
+                    sub={stats.effectiveRate} 
+                  />
 
-              {/* Main Tabbed Interface */}
-              <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
+                  <StatCard
+                    icon={<Activity className="w-5 h-5 text-blue-400" />}
+                    label="Avg/Day"
+                    value={stats.average}
+                    unit={stats.unit} 
+                    sub={stats.avgCost}
+                  />
 
-                {/* Tab Header & Action Bar */}
-                <div className="border-b border-slate-800 px-4 md:px-6 py-3">
-                  <div className="flex items-center gap-3 flex-wrap">
+                  <StatCard
+                    icon={<AlertCircle className="w-5 h-5 text-red-400" />}
+                    label="Peak Day"
+                    value={stats.peak}
+                    unit={stats.unit}  // Now uses selected unit
+                    sub={`${stats.peakDate} • ${stats.peakCost}`}
+                  />
+                </div>
 
-                    {/* Tabs */}
-                    <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
-                      <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
-                      <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
-                      <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
-                    </div>
+                {/* Date Controls */}
+                <DateRangeControls
+                  viewRange={viewRange}
+                  dataBounds={dataBounds}
+                  brushData={brushData}
+                  isZoomed={isZoomed}
+                  onViewChange={handleViewInput}
+                  onZoomOut={handleZoomOut}
+                  onBrushChange={handleChartSelection}
+                />
 
-                    {/* Metric Toggle - show for chart and analysis */}
-                    {(activeTab === 'chart' || activeTab === 'analysis') && (
-                      <>
-                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Metric</span>
-                          <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                            <button
-                              onClick={() => setMetricMode('energy')}
-                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy'
-                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                }`}
-                            >
-                              <Zap className="w-3 h-3" />
-                              <span className="hidden sm:inline">Energy</span>
-                            </button>
-                            <button
-                              onClick={() => setMetricMode('cost')}
-                              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost'
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                }`}
-                            >
-                              <DollarSign className="w-3 h-3" />
-                              <span className="hidden sm:inline">Cost</span>
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
+                {/* Main Tabbed Interface */}
+                <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
 
-                    {/* Chart-specific controls */}
-                    {activeTab === 'chart' && (
-                      <>
-                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
-                          <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                            {Object.keys(RESOLUTIONS).map((key) => (
+                  {/* Tab Header & Action Bar */}
+                  <div className="border-b border-slate-800 px-4 md:px-6 py-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+
+                      {/* Tabs */}
+                      <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
+                        <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
+                        <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
+                        <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
+                      </div>
+
+                      {/* Metric Toggle - show for chart and analysis */}
+                      {(activeTab === 'chart' || activeTab === 'analysis') && (
+                        <>
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Metric</span>
+                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
                               <button
-                                key={key}
-                                onClick={() => setResolution(key)}
-                                className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key
+                                onClick={() => setMetricMode('energy')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy'
+                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                  }`}
+                              >
+                                <Zap className="w-3 h-3" />
+                                <span className="hidden sm:inline">Energy</span>
+                              </button>
+                              <button
+                                onClick={() => setMetricMode('cost')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost'
                                   ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
                                   }`}
                               >
-                                {RESOLUTIONS[key].label.split(' ')[0]}
+                                <DollarSign className="w-3 h-3" />
+                                <span className="hidden sm:inline">Cost</span>
                               </button>
-                            ))}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2 ml-auto sm:ml-0">
-                          <StatusChip loading={isProcessing} count={chartData.length} />
-                        </div>
-                      </>
-                    )}
+                        </>
+                      )}
 
-                    {activeTab === 'analysis' && (
+                      {/* Unit Selector - show for chart and analysis when in energy mode */}
+                      {(activeTab === 'chart' || activeTab === 'analysis') && metricMode === 'energy' && (
+                        <>
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Unit</span>
+                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
+                              {ENERGY_UNITS.map(({ value, label }) => (
+                                <button
+                                  key={value}
+                                  onClick={() => setEnergyUnit(value)}
+                                  className={`px-2 py-1 text-xs font-medium rounded transition-all ${energyUnit === value
+                                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                    }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Chart-specific controls */}
+                      {activeTab === 'chart' && (
+                        <>
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
+                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
+                              {Object.keys(RESOLUTIONS).map((key) => (
+                                <button
+                                  key={key}
+                                  onClick={() => setResolution(key)}
+                                  className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key
+                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
+                                    }`}
+                                >
+                                  {RESOLUTIONS[key].label.split(' ')[0]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-auto sm:ml-0">
+                            <StatusChip loading={isProcessing} count={chartData.length} />
+                          </div>
+                        </>
+                      )}
+
+                      {activeTab === 'analysis' && (
+                        <>
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                          <StatusChip
+                            loading={analysisProcessing}
+                            count={0}
+                            label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'}
+                          />
+                        </>
+                      )}
+
+                      {activeTab === 'table' && (
+                        <>
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
+                          <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />
+                        </>
+                      )}
+
+                    </div>
+                  </div>
+
+                  {/* Tab Content Areas */}
+                  <div className="flex-1 relative min-h-[300px]">
+                    {activeTab === 'chart' && (
                       <>
-                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <StatusChip
-                          loading={analysisProcessing}
-                          count={0}
-                          label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'}
+                        <LoadingOverlay
+                          visible={isProcessing}
+                          variant="chart"
+                          size="md"
+                          message="Aggregating data..."
+                          subMessage={`Processing ${viewData.length.toLocaleString()} readings`}
+                        />
+                        <MainChart
+                          data={chartData}
+                          resolution={resolution}
+                          isProcessing={isProcessing}
+                          spansMultipleDays={spansMultipleDays}
+                          metricMode={metricMode}
+                          energyUnit={energyUnit} 
                         />
                       </>
                     )}
 
-                    {activeTab === 'table' && (
-                      <>
-                        <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                        <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />
-                      </>
+                    {activeTab === 'analysis' && (
+                      <div className="min-h-[600px]">
+                        <LoadingOverlay
+                          visible={analysisProcessing}
+                          variant="analysis"
+                          size="md"
+                          message="Analyzing patterns..."
+                          subMessage="Calculating averages and trends"
+                        />
+                        <AnalysisPanel
+                          filters={analysisFilters}
+                          setFilters={setAnalysisFilters}
+                          groupBy={groupBy}
+                          setGroupBy={setGroupBy}
+                          analysisView={analysisView}
+                          setAnalysisView={setAnalysisView}
+                          results={analysisResults}
+                          isProcessing={analysisProcessing}
+                          autoZoom={autoZoom}
+                          setAutoZoom={setAutoZoom}
+                          analysisDomain={analysisDomain}
+                          metricMode={metricMode}
+                          viewRange={viewRange}
+                          energyUnit={energyUnit}
+                        />
+                      </div>
                     )}
 
+                    {activeTab === 'table' && (
+                      <TableView
+                        data={viewData}
+                        page={page}
+                        setPage={setPage}
+                        rowsPerPage={ROWS_PER_PAGE}
+                        isSelectionSubset={isZoomed}
+                      />
+                    )}
                   </div>
                 </div>
-
-                {/* Tab Content Areas */}
-                <div className="flex-1 relative min-h-[300px]">
-                  {activeTab === 'chart' && (
-                    <>
-                      <LoadingOverlay
-                        visible={isProcessing}
-                        variant="chart"
-                        size="md"
-                        message="Aggregating data..."
-                        subMessage={`Processing ${viewData.length.toLocaleString()} readings`}
-                      />
-                      <MainChart
-                        data={chartData}
-                        resolution={resolution}
-                        isProcessing={isProcessing}
-                        spansMultipleDays={spansMultipleDays}
-                        metricMode={metricMode}
-                      />
-                    </>
-                  )}
-
-                  {activeTab === 'analysis' && (
-                    <div className="min-h-[600px]">
-                      <LoadingOverlay
-                        visible={analysisProcessing}
-                        variant="analysis"
-                        size="md"
-                        message="Analyzing patterns..."
-                        subMessage="Calculating averages and trends"
-                      />
-                      <AnalysisPanel
-                        filters={analysisFilters}
-                        setFilters={setAnalysisFilters}
-                        groupBy={groupBy}
-                        setGroupBy={setGroupBy}
-                        analysisView={analysisView}
-                        setAnalysisView={setAnalysisView}
-                        results={analysisResults}
-                        isProcessing={analysisProcessing}
-                        autoZoom={autoZoom}
-                        setAutoZoom={setAutoZoom}
-                        analysisDomain={analysisDomain}
-                        metricMode={metricMode}
-                        viewRange={viewRange}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'table' && (
-                    <TableView
-                      data={viewData}
-                      page={page}
-                      setPage={setPage}
-                      rowsPerPage={ROWS_PER_PAGE}
-                      isSelectionSubset={isZoomed}
-                    />
-                  )}
-                </div>
               </div>
-            </div>
-          )
-        )}
-      </main>
-    </div>
+            )
+          )}
+        </main>
+      </div>
     </AnimatedBackground>
   );
 }

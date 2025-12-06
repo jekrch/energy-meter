@@ -3,9 +3,9 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
-import { formatAxisValue } from '../../utils/formatters';
 import type { DataPoint } from '../../types';
 import { formatCost, formatCostAxis } from '../../utils/formatters';
+import { type EnergyUnit, formatEnergyValue, formatEnergyAxis } from '../../utils/energyUnits';
 
 export type MetricMode = 'energy' | 'cost';
 
@@ -15,6 +15,7 @@ interface MainChartProps {
     isProcessing: boolean;
     spansMultipleDays: boolean;
     metricMode: MetricMode;
+    energyUnit: EnergyUnit;
 }
 
 interface CustomTooltipProps {
@@ -22,9 +23,12 @@ interface CustomTooltipProps {
     payload?: Array<{ payload: DataPoint & { label?: string } }>;
     resolution?: string;
     metricMode: MetricMode;
+    energyUnit: EnergyUnit;
 }
 
-const CustomTooltip = React.memo(function CustomTooltip({ active, payload, resolution, metricMode }: CustomTooltipProps) {
+const CustomTooltip = React.memo(function CustomTooltip({ 
+    active, payload, resolution, metricMode, energyUnit 
+}: CustomTooltipProps) {
     if (active && payload?.length) {
         const data = payload[0].payload;
         const hasCost = typeof data.cost === 'number' && data.cost > 0;
@@ -35,7 +39,8 @@ const CustomTooltip = React.memo(function CustomTooltip({ active, payload, resol
                     {data.fullDate || data.label}
                 </p>
                 <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                    {data.value.toLocaleString()} <span className="text-xs text-slate-500 font-normal">Wh</span>
+                    {formatEnergyValue(data.value, energyUnit)}{' '}
+                    <span className="text-xs text-slate-500 font-normal">{energyUnit}</span>
                 </p>
                 {hasCost && (
                     <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
@@ -56,11 +61,16 @@ export const MainChart = React.memo(function MainChart({
     resolution,
     isProcessing,
     spansMultipleDays,
-    metricMode
+    metricMode,
+    energyUnit
 }: MainChartProps) {
     const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
     const gradientId = metricMode === 'energy' ? 'colorEnergy' : 'colorCost';
-    const yAxisFormatter = metricMode === 'energy' ? formatAxisValue : formatCostAxis;
+    
+    // Use unit-aware formatter for energy, existing formatter for cost
+    const yAxisFormatter = metricMode === 'energy' 
+        ? (val: number) => formatEnergyAxis(val, energyUnit)
+        : formatCostAxis;
 
     return (
         <div className="absolute inset-0 flex flex-col min-h-[300px]">
@@ -89,7 +99,9 @@ export const MainChart = React.memo(function MainChart({
                             tickLine={true}
                             axisLine={false}
                             minTickGap={40}
-                            tickFormatter={(val) => (resolution === 'RAW' || resolution === 'HOURLY') ? (spansMultipleDays ? val : val.split(', ')[1] || val) : val}
+                            tickFormatter={(val) => (resolution === 'RAW' || resolution === 'HOURLY') 
+                                ? (spansMultipleDays ? val : val.split(', ')[1] || val) 
+                                : val}
                         />
                         <YAxis
                             stroke="#94a3b8"
@@ -99,7 +111,13 @@ export const MainChart = React.memo(function MainChart({
                             tickFormatter={yAxisFormatter}
                             width={50}
                         />
-                        <Tooltip content={<CustomTooltip resolution={resolution} metricMode={metricMode} />} />
+                        <Tooltip content={
+                            <CustomTooltip 
+                                resolution={resolution} 
+                                metricMode={metricMode} 
+                                energyUnit={energyUnit}
+                            />
+                        } />
                         <Area
                             type="monotone"
                             dataKey={metricMode === 'energy' ? 'value' : 'cost'}
