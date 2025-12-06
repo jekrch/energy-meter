@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+    ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import type { DataPoint } from '../../types';
@@ -16,22 +16,37 @@ interface MainChartProps {
     spansMultipleDays: boolean;
     metricMode: MetricMode;
     energyUnit: EnergyUnit;
+    weatherData?: Map<number, number>;
+    showWeather?: boolean;
+    temperatureUnit?: 'C' | 'F';
+}
+
+interface ChartDataPoint extends DataPoint {
+    temperature?: number;
 }
 
 interface CustomTooltipProps {
     active?: boolean;
-    payload?: Array<{ payload: DataPoint & { label?: string } }>;
+    payload?: Array<{ payload: ChartDataPoint & { label?: string } }>;
     resolution?: string;
     metricMode: MetricMode;
     energyUnit: EnergyUnit;
+    showWeather?: boolean;
+    temperatureUnit?: 'C' | 'F';
 }
 
+const formatTemp = (temp: number, unit: 'C' | 'F') => {
+    if (unit === 'F') return `${Math.round(temp * 9/5 + 32)}°F`;
+    return `${Math.round(temp)}°C`;
+};
+
 const CustomTooltip = React.memo(function CustomTooltip({ 
-    active, payload, resolution, metricMode, energyUnit 
+    active, payload, resolution, metricMode, energyUnit, showWeather, temperatureUnit = 'F'
 }: CustomTooltipProps) {
     if (active && payload?.length) {
         const data = payload[0].payload;
         const hasCost = typeof data.cost === 'number' && data.cost > 0;
+        const hasTemp = showWeather && typeof data.temperature === 'number';
         
         return (
             <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[140px]">
@@ -47,6 +62,12 @@ const CustomTooltip = React.memo(function CustomTooltip({
                         {formatCost(data.cost)}
                     </p>
                 )}
+                {hasTemp && (
+                    <p className="text-sky-400 font-medium mt-1.5 text-sm">
+                        {formatTemp(data.temperature!, temperatureUnit)}
+                        <span className="text-xs text-slate-500 font-normal ml-1">avg temp</span>
+                    </p>
+                )}
                 {resolution && resolution !== 'RAW' && resolution !== 'HOURLY' && (
                     <p className="text-xs text-slate-500 mt-2 italic">Aggregated total</p>
                 )}
@@ -57,20 +78,54 @@ const CustomTooltip = React.memo(function CustomTooltip({
 });
 
 export const MainChart = React.memo(function MainChart({
-    data,
-    resolution,
-    isProcessing,
-    spansMultipleDays,
-    metricMode,
-    energyUnit
+    data, resolution, isProcessing, spansMultipleDays, metricMode, energyUnit,
+    weatherData, showWeather = false, temperatureUnit = 'F'
 }: MainChartProps) {
     const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
     const gradientId = metricMode === 'energy' ? 'colorEnergy' : 'colorCost';
     
-    // Use unit-aware formatter for energy, existing formatter for cost
     const yAxisFormatter = metricMode === 'energy' 
         ? (val: number) => formatEnergyAxis(val, energyUnit)
         : formatCostAxis;
+
+    // Merge weather data with chart data
+    const chartDataWithWeather: ChartDataPoint[] = useMemo(() => {
+        if (!showWeather || !weatherData?.size) return data;
+        
+        return data.map(point => {
+            let temp: number | undefined;
+            
+            if (resolution === 'RAW' || resolution === 'HOURLY') {
+                const hourTs = Math.floor(point.timestamp / 3600) * 3600;
+                temp = weatherData.get(hourTs);
+            } else if (resolution === 'DAILY') {
+                const date = new Date(point.timestamp * 1000);
+                const dayTs = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / 1000;
+                temp = weatherData.get(dayTs);
+            } else {
+                const date = new Date(point.timestamp * 1000);
+                const monthTs = new Date(date.getFullYear(), date.getMonth(), 1).getTime() / 1000;
+                temp = weatherData.get(monthTs);
+            }
+            
+            return { ...point, temperature: temp };
+        });
+    }, [data, weatherData, showWeather, resolution]);
+
+    // Calculate temperature axis bounds
+    const tempDomain = useMemo(() => {
+        if (!showWeather || !weatherData?.size) return [0, 40];
+        const temps = Array.from(weatherData.values());
+        const min = Math.min(...temps);
+        const max = Math.max(...temps);
+        const padding = (max - min) * 0.1 || 5;
+        return [Math.floor(min - padding), Math.ceil(max + padding)];
+    }, [weatherData, showWeather]);
+
+    const tempAxisFormatter = (val: number) => {
+        if (temperatureUnit === 'F') return `${Math.round(val * 9/5 + 32)}°`;
+        return `${Math.round(val)}°`;
+    };
 
     return (
         <div className="absolute inset-0 flex flex-col min-h-[300px]">
@@ -84,7 +139,7 @@ export const MainChart = React.memo(function MainChart({
                     </div>
                 )}
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                    <ComposedChart data={chartDataWithWeather} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                         <defs>
                             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={chartColor} stopOpacity={0.8} />
@@ -104,6 +159,7 @@ export const MainChart = React.memo(function MainChart({
                                 : val}
                         />
                         <YAxis
+                            yAxisId="primary"
                             stroke="#94a3b8"
                             fontSize={10}
                             tickLine={true}
@@ -111,14 +167,30 @@ export const MainChart = React.memo(function MainChart({
                             tickFormatter={yAxisFormatter}
                             width={50}
                         />
+                        {showWeather && weatherData?.size && (
+                            <YAxis
+                                yAxisId="temperature"
+                                orientation="right"
+                                stroke="#38bdf8"
+                                fontSize={10}
+                                tickLine={true}
+                                axisLine={false}
+                                tickFormatter={tempAxisFormatter}
+                                domain={tempDomain}
+                                width={40}
+                            />
+                        )}
                         <Tooltip content={
                             <CustomTooltip 
                                 resolution={resolution} 
                                 metricMode={metricMode} 
                                 energyUnit={energyUnit}
+                                showWeather={showWeather}
+                                temperatureUnit={temperatureUnit}
                             />
                         } />
                         <Area
+                            yAxisId="primary"
                             type="monotone"
                             dataKey={metricMode === 'energy' ? 'value' : 'cost'}
                             stroke={chartColor}
@@ -128,7 +200,20 @@ export const MainChart = React.memo(function MainChart({
                             animationDuration={300}
                             isAnimationActive={data.length < 500}
                         />
-                    </AreaChart>
+                        {showWeather && weatherData?.size && (
+                            <Line
+                                yAxisId="temperature"
+                                type="monotone"
+                                dataKey="temperature"
+                                stroke="#38bdf8"
+                                strokeWidth={2}
+                                dot={false}
+                                animationDuration={300}
+                                isAnimationActive={data.length < 500}
+                                connectNulls
+                            />
+                        )}
+                    </ComposedChart>
                 </ResponsiveContainer>
             </div>
         </div>

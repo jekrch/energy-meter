@@ -10,6 +10,7 @@ export interface DataPoint {
   date?: string;
   time?: string;
   fullDate?: string;
+  duration?: number;
 }
 
 export interface TimeRange {
@@ -33,17 +34,6 @@ export const RESOLUTIONS: Record<string, { label: string; seconds: number }> = {
     WEEKLY: { label: 'Weekly Sum', seconds: 604800 },
 };
 
-// types.ts - Updated with cost support
-
-export interface DataPoint {
-  timestamp: number;
-  value: number;
-  cost: number;  // Cost in micro-dollars (divide by 100000 for dollars)
-  // Optional display fields added during processing
-  date?: string;
-  time?: string;
-  fullDate?: string;
-}
 
 export interface TimeRange {
   start: number | null;

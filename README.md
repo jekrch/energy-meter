@@ -1,16 +1,31 @@
 # GB Energy Meter
 
-A web application for monitoring and visualizing energy consumption, built with React, TypeScript, and Vite.
+A web application for visualizing and analyzing energy consumption data from Green Button XML files. Built with React, TypeScript, and Vite.
 
 [gbmeter.com](https://gbmeter.com)
 
+## Features
+
+- **Green Button XML Support** — Import energy data from utility providers using the standard Green Button format
+- **Interactive Charts** — Visualize consumption with zoomable, responsive area charts
+- **Multi-Resolution Views** — View data at raw, hourly, daily, or weekly aggregations
+- **Analysis Dashboard** — Analyze patterns by hour, day of week, or month with timeline and average views
+- **Cost Tracking** — Toggle between energy usage and cost metrics with automatic rate calculations
+- **Weather Overlay** — Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns
+- **Flexible Units** — Switch between Wh, kWh, and MWh display units
+- **Data Table** — Browse raw readings with pagination
+- **Local Caching** — Weather data is cached in IndexedDB to minimize API requests
+- **Demo Data** — Try the app with realistic sample data spanning 2 years
+
 ## Tech Stack
 
-  * **Runtime/Manager:** Bun
-  * **Framework:** React
-  * **Language:** TypeScript
-  * **Build Tool:** Vite
-  * **Styling:** Tailwind
+- **Runtime/Manager:** Bun
+- **Framework:** React
+- **Language:** TypeScript
+- **Build Tool:** Vite
+- **Styling:** Tailwind CSS
+- **Charts:** Recharts
+- **Weather Data:** Open-Meteo API (free, non-commercial)
 
 ## Getting Started
 
@@ -20,18 +35,18 @@ Ensure you have [Bun](https://bun.sh/) installed on your machine.
 
 ### Installation
 
-1.  Clone the repository:
+1. Clone the repository:
 
-    ```bash
-    git clone https://github.com/jekrch/energy-meter.git
-    cd energy-meter
-    ```
+   ```bash
+   git clone https://github.com/jekrch/energy-meter.git
+   cd energy-meter
+   ```
 
-2.  Install dependencies:
+2. Install dependencies:
 
-    ```bash
-    bun install
-    ```
+   ```bash
+   bun install
+   ```
 
 ### Usage
 
@@ -50,6 +65,10 @@ To create a production build:
 ```bash
 bun run build
 ```
+
+## Data Privacy
+
+All data processing happens locally in your browser. Energy data files are never uploaded to any server. Weather location preferences are stored in localStorage and weather data is cached in IndexedDB on your device.
 
 ## License
 

@@ -3,13 +3,14 @@ import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Doll
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
-import { formatCost, toDollars } from './utils/formatters';
-import { formatShortDate, parseDateTimeLocal } from './utils/formatters';
+import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
 import { type EnergyUnit, ENERGY_UNITS, formatEnergyValue, suggestUnit } from './utils/energyUnits';
+import { aggregateWeatherData } from './utils/weatherData';
 
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
+import { useWeather } from './hooks/useWeather';
 
 // Components
 import { StatCard } from './components/common/StatCard';
@@ -20,6 +21,7 @@ import { DateRangeControls } from './components/dashboard/DateRangeControls';
 import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
+import { WeatherSettings } from './components/common/WeatherSettings';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 
@@ -37,6 +39,7 @@ export default function App() {
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
   const [metricMode, setMetricMode] = useState<MetricMode>('energy');
+  const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
   // Time State
   const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
@@ -55,36 +58,27 @@ export default function App() {
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
   const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
 
+  // Weather hook
+  const weather = useWeather(dataBounds.start, dataBounds.end);
 
   // --- Effects & Data Logic ---
 
-  // 1. Initialize bounds when data loads
   useEffect(() => {
     if (rawData && rawData.length > 0) {
       const bounds = { start: rawData[0].timestamp, end: rawData[rawData.length - 1].timestamp };
       setDataBounds(bounds);
       setViewRange(bounds);
-
-      // Create brush overview data once (200 points max - very lightweight)
       setBrushData(createBrushData(rawData, 200));
     }
   }, [rawData]);
 
-  // 2. Filter data for current view
   const viewData = useMemo(() => {
     if (!rawData || !viewRange.start || !viewRange.end) return rawData || [];
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
 
-  // 3. Hook: Complex Analysis Logic
-  const {
-    filters: analysisFilters,
-    setFilters: setAnalysisFilters,
-    results: analysisResults,
-    isProcessing: analysisProcessing
-  } = useAnalysis(activeTab, viewData, groupBy);
+  const { filters: analysisFilters, setFilters: setAnalysisFilters, results: analysisResults, isProcessing: analysisProcessing } = useAnalysis(activeTab, viewData, groupBy);
 
-  // 4. Async Processing for Main Chart
   useEffect(() => {
     const currentProcess = ++processingRef.current;
     if (!viewData.length) { setAggregatedData([]); return; }
@@ -111,10 +105,8 @@ export default function App() {
     });
   }, [viewData, resolution]);
 
-  // 5. Downsampling for performance
   const chartData = useMemo(() => downsampleLTTB(aggregatedData, MAX_CHART_POINTS), [aggregatedData]);
 
-  // 6. Computed Stats
   const spansMultipleDays = useMemo(() => {
     if (chartData.length < 2) return false;
     return new Date(chartData[0].timestamp * 1000).toDateString() !== new Date(chartData[chartData.length - 1].timestamp * 1000).toDateString();
@@ -127,63 +119,60 @@ export default function App() {
     }
   }, [rawData]);
 
+  // Compute weather data map for current resolution
+  const weatherDataMap = useMemo(() => {
+    if (!weather.enabled || !weather.hourlyData.length) return new Map<number, number>();
+    
+    const res = resolution === 'RAW' || resolution === 'HOURLY' ? 'hourly' 
+              : resolution === 'DAILY' ? 'daily' 
+              : 'monthly';
+    return aggregateWeatherData(weather.hourlyData, res);
+  }, [weather.enabled, weather.hourlyData, resolution]);
+
+  // Compute weather data map for analysis (based on groupBy)
+  const analysisWeatherMap = useMemo(() => {
+    if (!weather.enabled || !weather.hourlyData.length) return new Map<number, number>();
+    
+    const res = groupBy === 'hour' ? 'hourly' 
+              : groupBy === 'dayOfWeek' ? 'daily' 
+              : 'monthly';
+    return aggregateWeatherData(weather.hourlyData, res);
+  }, [weather.enabled, weather.hourlyData, groupBy]);
+
   const stats = useMemo(() => {
     if (!viewData.length) return null;
 
     const totalValue = viewData.reduce((a, c) => a + c.value, 0);
     const totalCost = viewData.reduce((a, c) => a + (c.cost ?? 0), 0);
 
-    // Aggregate by day to find peak day
     const dailyTotals = new Map<string, { value: number; cost: number; date: Date }>();
     for (const d of viewData) {
       const date = new Date(d.timestamp * 1000);
       const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
       const existing = dailyTotals.get(dayKey);
-      if (existing) {
-        existing.value += d.value;
-        existing.cost += d.cost ?? 0;
-      } else {
-        dailyTotals.set(dayKey, {
-          value: d.value,
-          cost: d.cost ?? 0,
-          date: new Date(date.getFullYear(), date.getMonth(), date.getDate())
-        });
-      }
+      if (existing) { existing.value += d.value; existing.cost += d.cost ?? 0; }
+      else { dailyTotals.set(dayKey, { value: d.value, cost: d.cost ?? 0, date: new Date(date.getFullYear(), date.getMonth(), date.getDate()) }); }
     }
 
-    // Find peak day
     let peakDay = { value: 0, cost: 0, date: new Date() };
-    for (const day of dailyTotals.values()) {
-      if (day.value > peakDay.value) {
-        peakDay = day;
-      }
-    }
+    for (const day of dailyTotals.values()) { if (day.value > peakDay.value) peakDay = day; }
 
-    // Calculate effective rate (cost per kWh)
-    const totalKwh = totalValue / 1000000; // mWh -> kWh
+    const totalKwh = totalValue / 1000000;
     const totalDollars = toDollars(totalCost);
     const effectiveRate = totalKwh > 0 ? totalDollars / totalKwh : 0;
-
-    // Calculate average daily usage/cost
     const numDays = dailyTotals.size;
     const avgDailyValue = numDays > 0 ? Math.round(totalValue / numDays) : 0;
     const avgDailyCost = numDays > 0 ? Math.round(totalCost / numDays) : 0;
 
     return {
-      total: formatEnergyValue(totalValue, energyUnit),
-      totalCost: formatCost(totalCost),
-      average: formatEnergyValue(avgDailyValue, energyUnit),
-      avgCost: formatCost(avgDailyCost),
-      peak: formatEnergyValue(peakDay.value, energyUnit),
-      peakCost: formatCost(peakDay.cost),
-      peakDate: formatShortDate(peakDay.date),
-      readings: viewData.length,
-      numDays,
+      total: formatEnergyValue(totalValue, energyUnit), totalCost: formatCost(totalCost),
+      average: formatEnergyValue(avgDailyValue, energyUnit), avgCost: formatCost(avgDailyCost),
+      peak: formatEnergyValue(peakDay.value, energyUnit), peakCost: formatCost(peakDay.cost),
+      peakDate: formatShortDate(peakDay.date), readings: viewData.length, numDays,
       range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`,
-      effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`,
-      unit: energyUnit,
+      effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`, unit: energyUnit,
     };
-  }, [viewData]);
+  }, [viewData, energyUnit]);
 
   const yAxisMax = useMemo(() => {
     if (!rawData?.length) return 1000;
@@ -203,14 +192,8 @@ export default function App() {
   const currentAnalysisMax = useMemo(() => {
     const data = analysisView === 'averages' ? analysisResults.averages : analysisResults.timeline;
     if (!data.length) return 0;
-
-    if (metricMode === 'energy') {
-      const key = analysisView === 'averages' ? 'average' : 'value';
-      return Math.max(...data.map(d => d[key] || 0));
-    } else {
-      const key = analysisView === 'averages' ? 'avgCost' : 'cost';
-      return Math.max(...data.map(d => d[key] || 0));
-    }
+    if (metricMode === 'energy') { const key = analysisView === 'averages' ? 'average' : 'value'; return Math.max(...data.map(d => d[key] || 0)); }
+    else { const key = analysisView === 'averages' ? 'avgCost' : 'cost'; return Math.max(...data.map(d => d[key] || 0)); }
   }, [analysisResults, analysisView, metricMode]);
 
   const analysisDomain = useMemo((): [number, number] => {
@@ -221,18 +204,14 @@ export default function App() {
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
   // --- Handlers ---
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true); setError(null); setFileName(file.name); setPage(1);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try {
-        const result = parseGreenButtonXML(ev.target?.result as string);
-        setRawData(result);
-        setResolution(result.length > 2000 ? 'DAILY' : 'RAW');
-      } catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
+      try { const result = parseGreenButtonXML(ev.target?.result as string); setRawData(result); setResolution(result.length > 2000 ? 'DAILY' : 'RAW'); }
+      catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
       finally { setLoading(false); }
     };
     reader.readAsText(file);
@@ -247,25 +226,16 @@ export default function App() {
     const ts = parseDateTimeLocal(value);
     if (ts && dataBounds.start !== null && dataBounds.end !== null) {
       const clamped = Math.max(dataBounds.start, Math.min(dataBounds.end, ts));
-      setViewRange(prev => ({ ...prev, [field]: clamped }));
-      setPage(1);
+      setViewRange(prev => ({ ...prev, [field]: clamped })); setPage(1);
     }
   };
 
-  const handleZoomOut = () => {
-    setViewRange({ start: dataBounds.start, end: dataBounds.end });
-    setPage(1);
-  };
-
-  const handleChartSelection = (range: { start: number; end: number }) => {
-    setViewRange({ start: range.start, end: range.end });
-    setPage(1);
-  };
+  const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
+  const handleChartSelection = (range: { start: number; end: number }) => { setViewRange({ start: range.start, end: range.end }); setPage(1); };
 
   return (
     <AnimatedBackground>
       <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
-        {/* Header */}
         <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -280,119 +250,52 @@ export default function App() {
         </header>
 
         <main className="max-w-7xl mx-auto px-4 pb-8 pt-4">
-          {/* Upload State */}
           {!rawData ? (
             loading ? (
               <div className="flex items-center justify-center min-h-[60vh]">
-                <PulseLoader
-                  variant="energy"
-                  size="lg"
-                  message="Parsing Green Button XML..."
-                  subMessage="Extracting energy readings"
-                />
+                <PulseLoader variant="energy" size="lg" message="Parsing Green Button XML..." subMessage="Extracting energy readings" />
               </div>
             ) : (
-              <UploadSection
-                onUpload={handleFileUpload}
-                onLoadSample={loadSampleData}
-                loading={loading}
-                error={error}
-              />
+              <UploadSection onUpload={handleFileUpload} onLoadSample={loadSampleData} loading={loading} error={error} />
             )
           ) : (
             stats && (
               <div className="space-y-4">
-                {/* Top Stats Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard
-                    icon={<Zap className="w-5 h-5 text-amber-400" />}
-                    label={isZoomed ? "View Total" : "Total"}
-                    value={stats.total}
-                    unit={stats.unit}
-                    sub={stats.totalCost}
-                  />
-                  <StatCard
-                    icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
-                    label="Total Cost"
-                    value={stats.totalCost}
-                    sub={stats.effectiveRate}
-                  />
-
-                  <StatCard
-                    icon={<Activity className="w-5 h-5 text-blue-400" />}
-                    label="Avg/Day"
-                    value={stats.average}
-                    unit={stats.unit}
-                    sub={stats.avgCost}
-                  />
-
-                  <StatCard
-                    icon={<AlertCircle className="w-5 h-5 text-red-400" />}
-                    label="Peak Day"
-                    value={stats.peak}
-                    unit={stats.unit}  // Now uses selected unit
-                    sub={`${stats.peakDate} • ${stats.peakCost}`}
-                  />
+                  <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} sub={stats.totalCost} />
+                  <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
+                  <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} sub={stats.avgCost} />
+                  <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} sub={`${stats.peakDate} • ${stats.peakCost}`} />
                 </div>
 
-                {/* Date Controls */}
-                <DateRangeControls
-                  viewRange={viewRange}
-                  dataBounds={dataBounds}
-                  brushData={brushData}
-                  isZoomed={isZoomed}
-                  onViewChange={handleViewInput}
-                  onZoomOut={handleZoomOut}
-                  onBrushChange={handleChartSelection}
-                />
+                <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
 
-                {/* Main Tabbed Interface */}
                 <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
-
-                  {/* Tab Header & Action Bar */}
                   <div className="border-b border-slate-800 px-4 md:px-6 py-3">
                     <div className="flex items-center gap-3 flex-wrap">
-
-                      {/* Tabs */}
                       <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
                         <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
                         <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
                         <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                       </div>
 
-                      {/* Metric Toggle - show for chart and analysis */}
                       {(activeTab === 'chart' || activeTab === 'analysis') && (
                         <>
                           <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Metric</span>
                             <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                              <button
-                                onClick={() => setMetricMode('energy')}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy'
-                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                  }`}
-                              >
-                                <Zap className="w-3 h-3" />
-                                <span className="hidden sm:inline">Energy</span>
+                              <button onClick={() => setMetricMode('energy')} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>
+                                <Zap className="w-3 h-3" /><span className="hidden sm:inline">Energy</span>
                               </button>
-                              <button
-                                onClick={() => setMetricMode('cost')}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost'
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                  }`}
-                              >
-                                <DollarSign className="w-3 h-3" />
-                                <span className="hidden sm:inline">Cost</span>
+                              <button onClick={() => setMetricMode('cost')} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>
+                                <DollarSign className="w-3 h-3" /><span className="hidden sm:inline">Cost</span>
                               </button>
                             </div>
                           </div>
                         </>
                       )}
 
-                      {/* Unit Selector - show for chart and analysis when in energy mode */}
                       {(activeTab === 'chart' || activeTab === 'analysis') && metricMode === 'energy' && (
                         <>
                           <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
@@ -400,23 +303,13 @@ export default function App() {
                             <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Unit</span>
                             <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
                               {ENERGY_UNITS.map(({ value, label }) => (
-                                <button
-                                  key={value}
-                                  onClick={() => setEnergyUnit(value)}
-                                  className={`px-2 py-1 text-xs font-medium rounded transition-all ${energyUnit === value
-                                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                    }`}
-                                >
-                                  {label}
-                                </button>
+                                <button key={value} onClick={() => setEnergyUnit(value)} className={`px-2 py-1 text-xs font-medium rounded transition-all ${energyUnit === value ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>{label}</button>
                               ))}
                             </div>
                           </div>
                         </>
                       )}
 
-                      {/* Chart-specific controls */}
                       {activeTab === 'chart' && (
                         <>
                           <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
@@ -424,105 +317,59 @@ export default function App() {
                             <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
                             <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
                               {Object.keys(RESOLUTIONS).map((key) => (
-                                <button
-                                  key={key}
-                                  onClick={() => setResolution(key)}
-                                  className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'
-                                    }`}
-                                >
-                                  {RESOLUTIONS[key].label.split(' ')[0]}
-                                </button>
+                                <button key={key} onClick={() => setResolution(key)} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>{RESOLUTIONS[key].label.split(' ')[0]}</button>
                               ))}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-auto sm:ml-0">
-                            <StatusChip loading={isProcessing} count={chartData.length} />
-                          </div>
+                          <div className="flex items-center gap-2 ml-auto sm:ml-0"><StatusChip loading={isProcessing} count={chartData.length} /></div>
                         </>
                       )}
 
-                      {activeTab === 'analysis' && (
+                      {activeTab === 'analysis' && (<><div className="hidden sm:block w-px h-5 bg-slate-700/60" /><StatusChip loading={analysisProcessing} count={0} label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'} /></>)}
+                      {activeTab === 'table' && (<><div className="hidden sm:block w-px h-5 bg-slate-700/60" /><StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} /></>)}
+
+                      {/* Weather Settings - show for chart and analysis tabs */}
+                      {(activeTab === 'chart' || activeTab === 'analysis') && (
                         <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                          <StatusChip
-                            loading={analysisProcessing}
-                            count={0}
-                            label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'}
+                          <div className="hidden sm:block w-px h-5 bg-slate-700/60 ml-auto" />
+                          <WeatherSettings
+                            enabled={weather.enabled}
+                            zipCode={weather.zipCode}
+                            location={weather.location}
+                            isLoading={weather.isLoading}
+                            error={weather.error}
+                            onSetZipCode={weather.setZipCode}
+                            onToggle={weather.toggleEnabled}
+                            onClear={weather.clearLocation}
                           />
+                          {weather.enabled && weather.location && (
+                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
+                              <button onClick={() => setTemperatureUnit('F')} className={`px-2 py-1 text-xs font-medium rounded transition-all ${temperatureUnit === 'F' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'}`}>°F</button>
+                              <button onClick={() => setTemperatureUnit('C')} className={`px-2 py-1 text-xs font-medium rounded transition-all ${temperatureUnit === 'C' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'}`}>°C</button>
+                            </div>
+                          )}
                         </>
                       )}
-
-                      {activeTab === 'table' && (
-                        <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                          <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />
-                        </>
-                      )}
-
                     </div>
                   </div>
 
-                  {/* Tab Content Areas */}
                   <div className="flex-1 relative min-h-[300px]">
                     {activeTab === 'chart' && (
                       <>
-                        <LoadingOverlay
-                          visible={isProcessing}
-                          variant="chart"
-                          size="md"
-                          message="Aggregating data..."
-                          subMessage={`Processing ${viewData.length.toLocaleString()} readings`}
-                        />
-                        <MainChart
-                          data={chartData}
-                          resolution={resolution}
-                          isProcessing={isProcessing}
-                          spansMultipleDays={spansMultipleDays}
-                          metricMode={metricMode}
-                          energyUnit={energyUnit}
-                        />
+                        <LoadingOverlay visible={isProcessing} variant="chart" size="md" message="Aggregating data..." subMessage={`Processing ${viewData.length.toLocaleString()} readings`} />
+                        <MainChart data={chartData} resolution={resolution} isProcessing={isProcessing} spansMultipleDays={spansMultipleDays} metricMode={metricMode} energyUnit={energyUnit} weatherData={weatherDataMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
                       </>
                     )}
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        <LoadingOverlay
-                          visible={analysisProcessing}
-                          variant="analysis"
-                          size="md"
-                          message="Analyzing patterns..."
-                          subMessage="Calculating averages and trends"
-                        />
-                        <AnalysisPanel
-                          filters={analysisFilters}
-                          setFilters={setAnalysisFilters}
-                          groupBy={groupBy}
-                          setGroupBy={setGroupBy}
-                          analysisView={analysisView}
-                          setAnalysisView={setAnalysisView}
-                          results={analysisResults}
-                          isProcessing={analysisProcessing}
-                          autoZoom={autoZoom}
-                          setAutoZoom={setAutoZoom}
-                          analysisDomain={analysisDomain}
-                          metricMode={metricMode}
-                          viewRange={viewRange}
-                          energyUnit={energyUnit}
-                        />
+                        <LoadingOverlay visible={analysisProcessing} variant="analysis" size="md" message="Analyzing patterns..." subMessage="Calculating averages and trends" />
+                        <AnalysisPanel filters={analysisFilters} setFilters={setAnalysisFilters} groupBy={groupBy} setGroupBy={setGroupBy} analysisView={analysisView} setAnalysisView={setAnalysisView} results={analysisResults} isProcessing={analysisProcessing} autoZoom={autoZoom} setAutoZoom={setAutoZoom} analysisDomain={analysisDomain} metricMode={metricMode} viewRange={viewRange} energyUnit={energyUnit} weatherData={analysisWeatherMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
                       </div>
                     )}
 
                     {activeTab === 'table' && (
-                      <TableView
-                        data={viewData}
-                        page={page}
-                        setPage={setPage}
-                        rowsPerPage={ROWS_PER_PAGE}
-                        isSelectionSubset={isZoomed}
-                        energyUnit={energyUnit} 
-                      />
+                      <TableView data={viewData} page={page} setPage={setPage} rowsPerPage={ROWS_PER_PAGE} isSelectionSubset={isZoomed} energyUnit={energyUnit} />
                     )}
                   </div>
                 </div>
