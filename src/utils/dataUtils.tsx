@@ -108,7 +108,7 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
   });
 };
 
-// Green Button XML Parser - now extracts cost
+// Green Button XML Parser
 export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
   try {
     const parser = new DOMParser();
@@ -134,11 +134,14 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
                          r.getElementsByTagNameNS("*", "timePeriod")[0];
       const startNode = timePeriod?.getElementsByTagName("start")[0] || 
                         timePeriod?.getElementsByTagNameNS("*", "start")[0];
+      const durationNode = timePeriod?.getElementsByTagName("duration")[0] || 
+                           timePeriod?.getElementsByTagNameNS("*", "duration")[0];
 
       return {
         timestamp: startNode?.textContent ? parseInt(startNode.textContent, 10) : 0,
         value: valueNode?.textContent ? parseInt(valueNode.textContent, 10) : 0,
-        cost: costNode?.textContent ? parseInt(costNode.textContent, 10) : 0
+        cost: costNode?.textContent ? parseInt(costNode.textContent, 10) : 0,
+        duration: durationNode?.textContent ? parseInt(durationNode.textContent, 10) : undefined
       };
     }).sort((a, b) => a.timestamp - b.timestamp);
 

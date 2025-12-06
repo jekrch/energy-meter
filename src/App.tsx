@@ -313,16 +313,16 @@ export default function App() {
                   />
                   <StatCard
                     icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
-                    label="Total Cost" 
-                    value={stats.totalCost} 
-                    sub={stats.effectiveRate} 
+                    label="Total Cost"
+                    value={stats.totalCost}
+                    sub={stats.effectiveRate}
                   />
 
                   <StatCard
                     icon={<Activity className="w-5 h-5 text-blue-400" />}
                     label="Avg/Day"
                     value={stats.average}
-                    unit={stats.unit} 
+                    unit={stats.unit}
                     sub={stats.avgCost}
                   />
 
@@ -481,7 +481,7 @@ export default function App() {
                           isProcessing={isProcessing}
                           spansMultipleDays={spansMultipleDays}
                           metricMode={metricMode}
-                          energyUnit={energyUnit} 
+                          energyUnit={energyUnit}
                         />
                       </>
                     )}
@@ -521,6 +521,7 @@ export default function App() {
                         setPage={setPage}
                         rowsPerPage={ROWS_PER_PAGE}
                         isSelectionSubset={isZoomed}
+                        energyUnit={energyUnit} 
                       />
                     )}
                   </div>
