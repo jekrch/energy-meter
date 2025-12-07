@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
-import { Calendar, CalendarDays, Maximize2, Minimize2, Loader2 } from 'lucide-react';
+import { Calendar, CalendarDays, Loader2 } from 'lucide-react';
 import { HourRangeFilter } from '../common/HourRangeFilter';
 import { FilterChip } from '../common/FilterChip';
 import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
@@ -64,6 +64,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
 }: AnalysisPanelProps) {
 
+    autoZoom = autoZoom;
     React.useEffect(() => {
         setGroupBy('month');
         setAnalysisView('timeline');
@@ -139,7 +140,6 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         });
     }, [analysisView, filteredAverages, timelineWithBounds, weatherData, showWeather, groupBy]);
 
-    // Define tooltip data extraction for this chart
     const getTooltipData = useCallback((d: any): TooltipData | null => {
         const energyVal = analysisView === 'averages' ? d.average : d.value;
         const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
@@ -207,6 +207,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     return (
         <div className="flex flex-col h-full">
+            {/* Chart Area */}
             <div
                 className="h-64 sm:h-80 flex-shrink-0 p-4 relative"
                 ref={chartContainerRef}
@@ -262,69 +263,160 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 )}
             </div>
 
+            {/* Controls & Filters */}
             <div className="flex-1 border-t border-slate-800 p-4 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700/50">
+                {/* Controls Section */}
+                <div className="flex flex-col gap-2">
+                    {/* Primary Controls Row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Group By Selector */}
+                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                             {(['hour', 'dayOfWeek', 'month'] as const).map(g => (
-                                <button key={g} onClick={() => setGroupBy(g)} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${groupBy === g ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}>
+                                <button
+                                    key={g}
+                                    onClick={() => setGroupBy(g)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                        groupBy === g
+                                            ? 'bg-slate-700 text-emerald-400 shadow-sm'
+                                            : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                >
                                     {g === 'hour' ? 'Hour' : g === 'dayOfWeek' ? 'Day' : 'Month'}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700/50">
-                            <button onClick={() => setAnalysisView('timeline')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${analysisView === 'timeline' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}>Timeline</button>
-                            <button onClick={() => setAnalysisView('averages')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${analysisView === 'averages' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}>Averages</button>
+
+                        {/* Divider */}
+                        <div className="hidden sm:block w-px h-5 bg-slate-700/50" />
+
+                        {/* View Mode Selector */}
+                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                            <button
+                                onClick={() => setAnalysisView('timeline')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                    analysisView === 'timeline'
+                                        ? 'bg-slate-700 text-emerald-400 shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                            >
+                                Timeline
+                            </button>
+                            <button
+                                onClick={() => setAnalysisView('averages')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                    analysisView === 'averages'
+                                        ? 'bg-slate-700 text-emerald-400 shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                            >
+                                Avg
+                            </button>
                         </div>
-                        <button onClick={() => setAutoZoom(prev => !prev)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${autoZoom ? 'bg-emerald-900/40 text-emerald-400 ring-1 ring-emerald-800/50' : 'bg-slate-800 text-slate-400 hover:text-slate-200 ring-1 ring-slate-700/50'}`}>
-                            {autoZoom ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                            {autoZoom ? 'Auto Fit' : 'Full Scale'}
-                        </button>
+
+                        {/* Spacer */}
+                        <div className="flex-1 min-w-0" />
+
+                        {/* Secondary Controls */}
+                        <div className="flex items-center gap-1.5">
+                            {/* Auto Zoom Toggle */}
+                            {/* <button
+                                onClick={() => setAutoZoom(prev => !prev)}
+                                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all ${
+                                    autoZoom
+                                        ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30'
+                                        : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 ring-1 ring-slate-700/50 hover:ring-slate-600'
+                                }`}
+                                title={autoZoom ? 'Auto fit enabled' : 'Full scale'}
+                            >
+                                {autoZoom ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                            </button> */}
+
+                            {/* Weather Settings would go here - passed as a prop or imported */}
+                            {/* <WeatherSettings ... /> */}
+                        </div>
                     </div>
-                    <div className="text-slate-500 text-xs sm:ml-auto flex items-center gap-2">
-                        {isProcessing ? (
-                            <><Loader2 className="w-3 h-3 animate-spin text-emerald-400" /><span>Processing...</span></>
-                        ) : (
-                            <span>
-                                {results.filtered.length.toLocaleString()} readings{hasActiveFilters && ' (filtered)'}
-                                {analysisView === 'timeline' && (
-                                    <span className="text-slate-600">
-                                        {` → ${results.timeline.length} ${groupBy === 'month' ? 'mo' : groupBy === 'dayOfWeek' ? 'days' : 'hrs'}`}
-                                        {incompletePeriods > 0 && ` (${incompletePeriods} partial)`}
-                                    </span>
+
+                    {/* Stats Row */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+                        <span>
+                            {isProcessing ? (
+                                <span className="flex items-center gap-1.5">
+                                    <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                                    Processing...
+                                </span>
+                            ) : (
+                                <>
+                                    {results.filtered.length.toLocaleString()} readings
+                                    {hasActiveFilters && <span className="text-slate-600"> (filtered)</span>}
+                                </>
+                            )}
+                        </span>
+                        {!isProcessing && analysisView === 'timeline' && (
+                            <span className="text-slate-600">
+                                {results.timeline.length} {groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'}
+                                {incompletePeriods > 0 && (
+                                    <span className="text-amber-500/70"> · {incompletePeriods} partial</span>
                                 )}
                             </span>
                         )}
                     </div>
                 </div>
 
+                {/* Filter Section */}
                 <div className="space-y-4">
                     <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Filter Data</div>
+
+                    {/* Days of Week */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium"><CalendarDays className="w-3.5 h-3.5" /><span>Days of Week</span></div>
+                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+                                <CalendarDays className="w-3.5 h-3.5" />
+                                <span>Days of Week</span>
+                            </div>
                             <div className="flex items-center gap-2">
                                 <button onClick={setWeekdays} className="text-xs text-emerald-400/80 hover:text-emerald-400 transition-colors">Weekdays</button>
                                 <span className="text-slate-700">·</span>
                                 <button onClick={setWeekends} className="text-xs text-emerald-400/80 hover:text-emerald-400 transition-colors">Weekends</button>
-                                {filters.daysOfWeek.length > 0 && (<><span className="text-slate-700">·</span><button onClick={clearDays} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button></>)}
+                                {filters.daysOfWeek.length > 0 && (
+                                    <>
+                                        <span className="text-slate-700">·</span>
+                                        <button onClick={clearDays} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+                                    </>
+                                )}
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                            {DAYS_OF_WEEK.map((day, i) => <FilterChip key={day} label={day} selected={filters.daysOfWeek.includes(i)} onClick={() => toggleDay(i)} />)}
+                            {DAYS_OF_WEEK.map((day, i) => (
+                                <FilterChip key={day} label={day} selected={filters.daysOfWeek.includes(i)} onClick={() => toggleDay(i)} />
+                            ))}
                         </div>
                     </div>
+
+                    {/* Months */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium"><Calendar className="w-3.5 h-3.5" /><span>Months</span></div>
-                            {filters.months.length > 0 && <button onClick={clearMonths} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button>}
+                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>Months</span>
+                            </div>
+                            {filters.months.length > 0 && (
+                                <button onClick={clearMonths} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                            {MONTHS.map((month, i) => <FilterChip key={month} label={month} selected={filters.months.includes(i)} onClick={() => toggleMonth(i)} />)}
+                            {MONTHS.map((month, i) => (
+                                <FilterChip key={month} label={month} selected={filters.months.includes(i)} onClick={() => toggleMonth(i)} />
+                            ))}
                         </div>
                     </div>
+
+                    {/* Hour Range */}
                     <div className="space-y-2">
-                        <HourRangeFilter hourStart={filters.hourStart} hourEnd={filters.hourEnd} onChange={(start, end) => setFilters(prev => ({ ...prev, hourStart: start, hourEnd: end }))} />
+                        <HourRangeFilter
+                            hourStart={filters.hourStart}
+                            hourEnd={filters.hourEnd}
+                            onChange={(start, end) => setFilters(prev => ({ ...prev, hourStart: start, hourEnd: end }))}
+                        />
                     </div>
                 </div>
             </div>

@@ -201,7 +201,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   label,
 }) => (
   <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
-    {loading ? (
+    {/* {loading && (
       <div className="relative w-3 h-3">
         <div
           className="absolute inset-0 rounded-full border border-emerald-400/30"
@@ -212,10 +212,8 @@ export const StatusChip: React.FC<StatusChipProps> = ({
           style={{ animation: 'spin 0.8s linear infinite' }}
         />
       </div>
-    ) : (
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-    )}
-    <span className="text-xs text-slate-400 font-medium">
+    )} */}
+    <span className={`text-[10px] text-slate-400 font-medium ${loading ? 'text-slate-500' : ''}`}>
       {label || count.toLocaleString()}
     </span>
     <style>{`

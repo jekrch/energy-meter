@@ -119,23 +119,15 @@ export default function App() {
     }
   }, [rawData]);
 
-  // Compute weather data map for current resolution
   const weatherDataMap = useMemo(() => {
     if (!weather.enabled || !weather.hourlyData.length) return new Map<number, number>();
-    
-    const res = resolution === 'RAW' || resolution === 'HOURLY' ? 'hourly' 
-              : resolution === 'DAILY' ? 'daily' 
-              : 'monthly';
+    const res = resolution === 'RAW' || resolution === 'HOURLY' ? 'hourly' : resolution === 'DAILY' ? 'daily' : 'monthly';
     return aggregateWeatherData(weather.hourlyData, res);
   }, [weather.enabled, weather.hourlyData, resolution]);
 
-  // Compute weather data map for analysis (based on groupBy)
   const analysisWeatherMap = useMemo(() => {
     if (!weather.enabled || !weather.hourlyData.length) return new Map<number, number>();
-    
-    const res = groupBy === 'hour' ? 'hourly' 
-              : groupBy === 'dayOfWeek' ? 'daily' 
-              : 'monthly';
+    const res = groupBy === 'hour' ? 'hourly' : groupBy === 'dayOfWeek' ? 'daily' : 'monthly';
     return aggregateWeatherData(weather.hourlyData, res);
   }, [weather.enabled, weather.hourlyData, groupBy]);
 
@@ -233,6 +225,9 @@ export default function App() {
   const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
   const handleChartSelection = (range: { start: number; end: number }) => { setViewRange({ start: range.start, end: range.end }); setPage(1); };
 
+  // Helper: show chart/analysis controls
+  const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
+
   return (
     <AnimatedBackground>
       <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
@@ -271,67 +266,97 @@ export default function App() {
                 <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
 
                 <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
-                  <div className="border-b border-slate-800 px-4 md:px-6 py-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
+                  {/* Header Controls - Reorganized */}
+                  <div className="border-b border-slate-800 px-3 md:px-4 py-3 space-y-2">
+                    {/* Row 1: Tabs + Status (always visible) */}
+                    <div className="flex items-center justify-between gap-3">
+                      {/* Tab Buttons */}
+                      <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                         <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
                         <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
                         <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                       </div>
 
-                      {(activeTab === 'chart' || activeTab === 'analysis') && (
-                        <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Metric</span>
-                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                              <button onClick={() => setMetricMode('energy')} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'energy' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>
-                                <Zap className="w-3 h-3" /><span className="hidden sm:inline">Energy</span>
+                      {/* Status Chip - Right aligned */}
+                      <div className="text-[11px] text-slate-500">
+                        {activeTab === 'chart' && <StatusChip loading={isProcessing} count={chartData.length} />}
+                        {activeTab === 'analysis' && <StatusChip loading={analysisProcessing} count={0} label={groupBy === 'hour' ? '24h' : groupBy === 'dayOfWeek' ? '7d' : '12mo'} />}
+                        {activeTab === 'table' && <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />}
+                      </div>
+                    </div>
+
+                    {/* Row 2: View Options (chart/analysis tabs only) */}
+                    {showChartControls && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Metric Toggle */}
+                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                          <button
+                            onClick={() => setMetricMode('energy')}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              metricMode === 'energy'
+                                ? 'bg-amber-500/15 text-amber-400 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span className="hidden xs:inline">Energy</span>
+                          </button>
+                          <button
+                            onClick={() => setMetricMode('cost')}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              metricMode === 'cost'
+                                ? 'bg-emerald-500/15 text-emerald-400 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span className="hidden xs:inline">Cost</span>
+                          </button>
+                        </div>
+
+                        {/* Energy Unit Selector (only when metric=energy) */}
+                        {metricMode === 'energy' && (
+                          <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                            {ENERGY_UNITS.map(({ value, label }) => (
+                              <button
+                                key={value}
+                                onClick={() => setEnergyUnit(value)}
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                  energyUnit === value
+                                    ? 'bg-amber-500/15 text-amber-400 shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {label}
                               </button>
-                              <button onClick={() => setMetricMode('cost')} className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-all ${metricMode === 'cost' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>
-                                <DollarSign className="w-3 h-3" /><span className="hidden sm:inline">Cost</span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Resolution Selector (chart tab only) */}
+                        {activeTab === 'chart' && (
+                          <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                            {Object.keys(RESOLUTIONS).map((key) => (
+                              <button
+                                key={key}
+                                onClick={() => setResolution(key)}
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                  resolution === key
+                                    ? 'bg-slate-700 text-emerald-400 shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {RESOLUTIONS[key].label.split(' ')[0]}
                               </button>
-                            </div>
+                            ))}
                           </div>
-                        </>
-                      )}
+                        )}
 
-                      {(activeTab === 'chart' || activeTab === 'analysis') && metricMode === 'energy' && (
-                        <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Unit</span>
-                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                              {ENERGY_UNITS.map(({ value, label }) => (
-                                <button key={value} onClick={() => setEnergyUnit(value)} className={`px-2 py-1 text-xs font-medium rounded transition-all ${energyUnit === value ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>{label}</button>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      )}
+                        {/* Spacer */}
+                        <div className="flex-1 min-w-0" />
 
-                      {activeTab === 'chart' && (
-                        <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60" />
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-medium hidden md:inline">Resolution</span>
-                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                              {Object.keys(RESOLUTIONS).map((key) => (
-                                <button key={key} onClick={() => setResolution(key)} className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${resolution === key ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'}`}>{RESOLUTIONS[key].label.split(' ')[0]}</button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-auto sm:ml-0"><StatusChip loading={isProcessing} count={chartData.length} /></div>
-                        </>
-                      )}
-
-                      {activeTab === 'analysis' && (<><div className="hidden sm:block w-px h-5 bg-slate-700/60" /><StatusChip loading={analysisProcessing} count={0} label={groupBy === 'hour' ? '24h view' : groupBy === 'dayOfWeek' ? '7d view' : '12mo view'} /></>)}
-                      {activeTab === 'table' && (<><div className="hidden sm:block w-px h-5 bg-slate-700/60" /><StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} /></>)}
-
-                      {/* Weather Settings - show for chart and analysis tabs */}
-                      {(activeTab === 'chart' || activeTab === 'analysis') && (
-                        <>
-                          <div className="hidden sm:block w-px h-5 bg-slate-700/60 ml-auto" />
+                        {/* Weather Controls Group */}
+                        <div className="flex items-center gap-1.5">
                           <WeatherSettings
                             enabled={weather.enabled}
                             zipCode={weather.zipCode}
@@ -342,17 +367,38 @@ export default function App() {
                             onToggle={weather.toggleEnabled}
                             onClear={weather.clearLocation}
                           />
+
+                          {/* Temperature Unit Toggle (only when weather enabled) */}
                           {weather.enabled && weather.location && (
-                            <div className="flex bg-slate-800/80 p-0.5 rounded-md border border-slate-700/50">
-                              <button onClick={() => setTemperatureUnit('F')} className={`px-2 py-1 text-xs font-medium rounded transition-all ${temperatureUnit === 'F' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'}`}>°F</button>
-                              <button onClick={() => setTemperatureUnit('C')} className={`px-2 py-1 text-xs font-medium rounded transition-all ${temperatureUnit === 'C' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'}`}>°C</button>
+                            <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                              <button
+                                onClick={() => setTemperatureUnit('F')}
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                  temperatureUnit === 'F'
+                                    ? 'bg-sky-500/15 text-sky-400 shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                °F
+                              </button>
+                              <button
+                                onClick={() => setTemperatureUnit('C')}
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                  temperatureUnit === 'C'
+                                    ? 'bg-sky-500/15 text-sky-400 shadow-sm'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                °C
+                              </button>
                             </div>
                           )}
-                        </>
-                      )}
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Content Area */}
                   <div className="flex-1 relative min-h-[300px]">
                     {activeTab === 'chart' && (
                       <>
@@ -363,7 +409,6 @@ export default function App() {
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        {/* <LoadingOverlay visible={analysisProcessing} variant="analysis" size="md" message="Analyzing patterns..." subMessage="Calculating averages and trends" /> */}
                         <AnalysisPanel filters={analysisFilters} setFilters={setAnalysisFilters} groupBy={groupBy} setGroupBy={setGroupBy} analysisView={analysisView} setAnalysisView={setAnalysisView} results={analysisResults} isProcessing={analysisProcessing} autoZoom={autoZoom} setAutoZoom={setAutoZoom} analysisDomain={analysisDomain} metricMode={metricMode} viewRange={viewRange} energyUnit={energyUnit} weatherData={analysisWeatherMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
                       </div>
                     )}
