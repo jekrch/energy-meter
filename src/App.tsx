@@ -363,7 +363,7 @@ export default function App() {
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        <LoadingOverlay visible={analysisProcessing} variant="analysis" size="md" message="Analyzing patterns..." subMessage="Calculating averages and trends" />
+                        {/* <LoadingOverlay visible={analysisProcessing} variant="analysis" size="md" message="Analyzing patterns..." subMessage="Calculating averages and trends" /> */}
                         <AnalysisPanel filters={analysisFilters} setFilters={setAnalysisFilters} groupBy={groupBy} setGroupBy={setGroupBy} analysisView={analysisView} setAnalysisView={setAnalysisView} results={analysisResults} isProcessing={analysisProcessing} autoZoom={autoZoom} setAutoZoom={setAutoZoom} analysisDomain={analysisDomain} metricMode={metricMode} viewRange={viewRange} energyUnit={energyUnit} weatherData={analysisWeatherMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
                       </div>
                     )}
