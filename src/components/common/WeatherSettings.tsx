@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { MapPin, Loader2, X, Thermometer } from 'lucide-react';
 import type { GeocodingResult } from '../../utils/weatherData';
@@ -19,55 +19,23 @@ export const WeatherSettings = React.memo(function WeatherSettings({
 }: WeatherSettingsProps) {
   const [inputValue, setInputValue] = useState(zipCode);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  // Calculate dropdown position
-  useEffect(() => {
-    if (isExpanded && buttonRef.current) {
-      const updatePosition = () => {
-        const buttonRect = buttonRef.current!.getBoundingClientRect();
-        const dropdownWidth = 260;
-        const dropdownHeight = 320;
-        const padding = 12;
-
-        let top = buttonRect.bottom + 8;
-        let left = buttonRect.left;
-
-        // Check right edge
-        if (left + dropdownWidth > window.innerWidth - padding) {
-          left = window.innerWidth - dropdownWidth - padding;
-        }
-
-        // Check left edge
-        if (left < padding) {
-          left = padding;
-        }
-
-        // Check bottom edge - flip above if needed
-        if (top + dropdownHeight > window.innerHeight - padding) {
-          top = buttonRect.top - dropdownHeight - 8;
-        }
-
-        // If flipped above but still off top, just position at top
-        if (top < padding) {
-          top = padding;
-        }
-
-        setPosition({ top, left });
-      };
-
-      updatePosition();
-      window.addEventListener('scroll', updatePosition, true);
-      window.addEventListener('resize', updatePosition);
-
-      return () => {
-        window.removeEventListener('scroll', updatePosition, true);
-        window.removeEventListener('resize', updatePosition);
-      };
+  // Close with animation and blur to reset mobile zoom
+  const closeDropdown = useCallback(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
     }
-  }, [isExpanded]);
+    setIsAnimating(false);
+    setTimeout(() => setIsExpanded(false), 150);
+  }, []);
+
+  // Open with animation
+  const openDropdown = useCallback(() => {
+    setIsExpanded(true);
+    requestAnimationFrame(() => setIsAnimating(true));
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -80,11 +48,10 @@ export const WeatherSettings = React.memo(function WeatherSettings({
         buttonRef.current &&
         !buttonRef.current.contains(e.target as Node)
       ) {
-        setIsExpanded(false);
+        closeDropdown();
       }
     };
 
-    // Use timeout to avoid immediate close on the click that opened it
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 0);
@@ -93,19 +60,19 @@ export const WeatherSettings = React.memo(function WeatherSettings({
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isExpanded]);
+  }, [isExpanded, closeDropdown]);
 
   // Close on escape key
   useEffect(() => {
     if (!isExpanded) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsExpanded(false);
+      if (e.key === 'Escape') closeDropdown();
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isExpanded]);
+  }, [isExpanded, closeDropdown]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,85 +88,120 @@ export const WeatherSettings = React.memo(function WeatherSettings({
 
   const dropdown = isExpanded ? createPortal(
     <div 
-      ref={dropdownRef}
-      style={{ top: position.top, left: position.left }}
-      className="fixed z-[9999] bg-slate-800 border border-slate-700 rounded-lg shadow-2xl p-3 w-[260px]"
+      className={`fixed inset-0 z-[9998] flex items-start justify-center pt-[15vh] px-4 bg-black/20 backdrop-blur-[2px] transition-opacity duration-150 ${
+        isAnimating ? 'opacity-100' : 'opacity-0'
+      }`}
+      onClick={closeDropdown}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-slate-300">Temperature Overlay</span>
-        <button
-          onClick={() => setIsExpanded(false)}
-          className="text-slate-500 hover:text-slate-300 p-1"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <p className="text-[10px] text-slate-500 mb-3">
-        Enter your location to overlay historical temperature data on charts.
-      </p>
-
-      <form onSubmit={handleSubmit} className="space-y-2">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Zip code or city name"
-            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50"
-            autoFocus
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !inputValue.trim()}
-            className="px-3 py-1.5 text-xs font-medium bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded transition-colors"
-          >
-            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Set'}
-          </button>
-        </div>
-
-        {error && (
-          <p className="text-[10px] text-red-400">{error}</p>
-        )}
-
-        {location && (
-          <div className="flex items-center justify-between bg-slate-900/50 rounded px-2 py-1.5">
-            <div className="flex items-center gap-1.5 text-xs text-slate-300">
-              <MapPin className="w-3 h-3 text-sky-400 flex-shrink-0" />
-              <span className="truncate">{location.name}</span>
-              {location.admin1 && (
-                <span className="text-slate-500 truncate">{location.admin1}</span>
-              )}
+      {/* Dropdown */}
+      <div 
+        ref={dropdownRef}
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-[340px] transition-all duration-150 ease-out ${
+          isAnimating 
+            ? 'opacity-100 translate-y-0 scale-100' 
+            : 'opacity-0 -translate-y-4 scale-95'
+        }`}
+      >
+        <div className="bg-slate-800/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-sky-500/10 rounded-lg">
+                <Thermometer className="w-4 h-4 text-sky-400" />
+              </div>
+              <span className="text-sm font-medium text-slate-200">Temperature Chart</span>
             </div>
             <button
-              type="button"
-              onClick={handleClear}
-              className="text-slate-500 hover:text-red-400 p-0.5 flex-shrink-0"
-              title="Clear location"
+              onClick={closeDropdown}
+              className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded-lg transition-colors"
             >
-              <X className="w-3 h-3" />
+              <X className="w-4 h-4" />
             </button>
           </div>
-        )}
-      </form>
 
-      {location && (
-        <div className="mt-3 pt-2 border-t border-slate-700">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => onToggle(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500/50"
-            />
-            <span className="text-xs text-slate-300">Show on charts</span>
-          </label>
+          {/* Content */}
+          <div className="p-4">
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              Enter your location to overlay historical temperature data on your energy charts.
+            </p>
+
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Zip code or city name"
+                  className="flex-1 bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/50 transition-all"
+                  style={{ fontSize: '16px' }} // Prevents mobile zoom
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputValue.trim()}
+                  className="px-4 py-2.5 text-sm font-medium bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-all disabled:cursor-not-allowed"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Set'}
+                </button>
+              </div>
+
+              {error && (
+                <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <p className="text-xs text-red-400">{error}</p>
+                </div>
+              )}
+
+              {location && (
+                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2.5 group">
+                  <div className="flex items-center gap-2 text-sm text-slate-300 min-w-0">
+                    <MapPin className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                    <span className="truncate font-medium">{location.name}</span>
+                    {location.admin1 && (
+                      <span className="text-slate-500 truncate text-xs">{location.admin1}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="p-1 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-md flex-shrink-0 transition-colors"
+                    title="Clear location"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </form>
+
+            {location && (
+              <div className="mt-4 pt-4 border-t border-slate-700/50">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(e) => onToggle(e.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <div className="w-9 h-5 bg-slate-700 rounded-full peer-checked:bg-sky-600 transition-colors" />
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-slate-300 rounded-full shadow-sm peer-checked:translate-x-4 peer-checked:bg-white transition-all" />
+                  </div>
+                  <span className="text-sm text-slate-300 group-hover:text-slate-200 transition-colors">
+                    Show on charts
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-2.5 bg-slate-900/40 border-t border-slate-700/30">
+            <p className="text-[10px] text-slate-500">
+              Data from Open-Meteo • Cached locally
+            </p>
+          </div>
         </div>
-      )}
-
-      <p className="text-[9px] text-slate-600 mt-2">
-        Data from Open-Meteo • Cached locally
-      </p>
+      </div>
     </div>,
     document.body
   ) : null;
@@ -207,15 +209,15 @@ export const WeatherSettings = React.memo(function WeatherSettings({
   // Compact display when location is set
   if (location && !isExpanded) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           onClick={() => onToggle(!enabled)}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
             enabled
-              ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-              : 'bg-slate-800 text-slate-500 border border-slate-700/50 hover:text-slate-300'
+              ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30 shadow-sm shadow-sky-500/10'
+              : 'bg-slate-800 text-slate-500 border border-slate-700/50 hover:text-slate-300 hover:border-slate-600'
           }`}
-          title={enabled ? 'Hide temperature overlay' : 'Show temperature overlay'}
+          title={enabled ? 'Hide temperature chart' : 'Show temperature chart'}
         >
           <Thermometer className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">{enabled ? 'Temp On' : 'Temp Off'}</span>
@@ -223,8 +225,8 @@ export const WeatherSettings = React.memo(function WeatherSettings({
         
         <button
           ref={buttonRef}
-          onClick={() => setIsExpanded(true)}
-          className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          onClick={openDropdown}
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-lg transition-all"
           title="Change location"
         >
           <MapPin className="w-3 h-3" />
@@ -241,11 +243,11 @@ export const WeatherSettings = React.memo(function WeatherSettings({
     <div className="relative">
       <button
         ref={buttonRef}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => isExpanded ? closeDropdown() : openDropdown()}
         className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all ${
           isExpanded
-            ? 'bg-slate-700 text-slate-200'
-            : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/50'
+            ? 'bg-slate-700 text-slate-200 shadow-inner'
+            : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/50 hover:border-slate-600'
         }`}
       >
         {isLoading ? (

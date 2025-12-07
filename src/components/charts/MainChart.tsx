@@ -1,11 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
     ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import type { DataPoint } from '../../types';
-import { formatCost, formatCostAxis } from '../../utils/formatters';
-import { type EnergyUnit, formatEnergyValue, formatEnergyAxis } from '../../utils/energyUnits';
+import { formatCostAxis } from '../../utils/formatters';
+import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
+import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
+import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 
 export type MetricMode = 'energy' | 'cost';
 
@@ -25,76 +27,26 @@ interface ChartDataPoint extends DataPoint {
     temperature?: number;
 }
 
-interface CustomTooltipProps {
-    active?: boolean;
-    payload?: Array<{ payload: ChartDataPoint & { label?: string } }>;
-    resolution?: string;
-    metricMode: MetricMode;
-    energyUnit: EnergyUnit;
-    showWeather?: boolean;
-    temperatureUnit?: 'C' | 'F';
-}
-
-const formatTemp = (temp: number, unit: 'C' | 'F') => {
-    if (unit === 'F') return `${Math.round(temp * 9/5 + 32)}°F`;
-    return `${Math.round(temp)}°C`;
-};
-
-const CustomTooltip = React.memo(function CustomTooltip({ 
-    active, payload, resolution, metricMode, energyUnit, showWeather, temperatureUnit = 'F'
-}: CustomTooltipProps) {
-    if (active && payload?.length) {
-        const data = payload[0].payload;
-        const hasCost = typeof data.cost === 'number' && data.cost > 0;
-        const hasTemp = showWeather && typeof data.temperature === 'number';
-        
-        return (
-            <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[140px]">
-                <p className="text-slate-400 text-xs font-semibold mb-2">
-                    {data.fullDate || data.label}
-                </p>
-                <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                    {formatEnergyValue(data.value, energyUnit)}{' '}
-                    <span className="text-xs text-slate-500 font-normal">{energyUnit}</span>
-                </p>
-                {hasCost && (
-                    <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                        {formatCost(data.cost)}
-                    </p>
-                )}
-                {hasTemp && (
-                    <p className="text-sky-400 font-medium mt-1.5 text-sm">
-                        {formatTemp(data.temperature!, temperatureUnit)}
-                        <span className="text-xs text-slate-500 font-normal ml-1">avg temp</span>
-                    </p>
-                )}
-                {resolution && resolution !== 'RAW' && resolution !== 'HOURLY' && (
-                    <p className="text-xs text-slate-500 mt-2 italic">Aggregated total</p>
-                )}
-            </div>
-        );
-    }
-    return null;
-});
-
 export const MainChart = React.memo(function MainChart({
     data, resolution, isProcessing, spansMultipleDays, metricMode, energyUnit,
     weatherData, showWeather = false, temperatureUnit = 'F'
 }: MainChartProps) {
+    const isTouchDevice = useTouchDevice();
+    const { activeIndex, tooltipRef, chartContainerRef, handleChartClick } = useTooltipControl(isTouchDevice);
+
     const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
     const gradientId = metricMode === 'energy' ? 'colorEnergy' : 'colorCost';
-    
-    const yAxisFormatter = metricMode === 'energy' 
+
+    const yAxisFormatter = metricMode === 'energy'
         ? (val: number) => formatEnergyAxis(val, energyUnit)
         : formatCostAxis;
 
-    // Merge weather data with chart data
     const chartDataWithWeather: ChartDataPoint[] = useMemo(() => {
         if (!showWeather || !weatherData?.size) return data;
-        
+
         return data.map(point => {
             let temp: number | undefined;
-            
+
             if (resolution === 'RAW' || resolution === 'HOURLY') {
                 const hourTs = Math.floor(point.timestamp / 3600) * 3600;
                 temp = weatherData.get(hourTs);
@@ -107,12 +59,11 @@ export const MainChart = React.memo(function MainChart({
                 const monthTs = new Date(date.getFullYear(), date.getMonth(), 1).getTime() / 1000;
                 temp = weatherData.get(monthTs);
             }
-            
+
             return { ...point, temperature: temp };
         });
     }, [data, weatherData, showWeather, resolution]);
 
-    // Calculate temperature axis bounds
     const tempDomain = useMemo(() => {
         if (!showWeather || !weatherData?.size) return [0, 40];
         const temps = Array.from(weatherData.values());
@@ -122,14 +73,25 @@ export const MainChart = React.memo(function MainChart({
         return [Math.floor(min - padding), Math.ceil(max + padding)];
     }, [weatherData, showWeather]);
 
+    const getTooltipData = useCallback((d: ChartDataPoint & { label?: string }): TooltipData => ({
+        label: d.fullDate || d.label || '',
+        energyValue: d.value,
+        costValue: d.cost,
+        temperature: d.temperature,
+        showAggregatedNote: resolution !== 'RAW' && resolution !== 'HOURLY'
+    }), [resolution]);
+
     const tempAxisFormatter = (val: number) => {
-        if (temperatureUnit === 'F') return `${Math.round(val * 9/5 + 32)}°`;
+        if (temperatureUnit === 'F') return `${Math.round(val * 9 / 5 + 32)}°`;
         return `${Math.round(val)}°`;
     };
 
     return (
         <div className="absolute inset-0 flex flex-col min-h-[300px]">
-            <div className="flex-1 p-4 relative">
+            <div
+                className="flex-1 p-4 relative"
+                ref={chartContainerRef}
+            >
                 {isProcessing && (
                     <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-10 pointer-events-none">
                         <div className="flex items-center gap-3 bg-slate-800 px-4 py-3 rounded-lg border border-slate-700">
@@ -139,7 +101,11 @@ export const MainChart = React.memo(function MainChart({
                     </div>
                 )}
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartDataWithWeather} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                    <ComposedChart
+                        data={chartDataWithWeather}
+                        margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+                        onClick={handleChartClick}
+                    >
                         <defs>
                             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={chartColor} stopOpacity={0.8} />
@@ -154,8 +120,8 @@ export const MainChart = React.memo(function MainChart({
                             tickLine={true}
                             axisLine={false}
                             minTickGap={40}
-                            tickFormatter={(val) => (resolution === 'RAW' || resolution === 'HOURLY') 
-                                ? (spansMultipleDays ? val : val.split(', ')[1] || val) 
+                            tickFormatter={(val) => (resolution === 'RAW' || resolution === 'HOURLY')
+                                ? (spansMultipleDays ? val : val.split(', ')[1] || val)
                                 : val}
                         />
                         <YAxis
@@ -180,15 +146,22 @@ export const MainChart = React.memo(function MainChart({
                                 width={25}
                             />
                         )}
-                        <Tooltip content={
-                            <CustomTooltip 
-                                resolution={resolution} 
-                                metricMode={metricMode} 
-                                energyUnit={energyUnit}
-                                showWeather={showWeather}
-                                temperatureUnit={temperatureUnit}
-                            />
-                        } />
+                        <Tooltip
+                            content={(props) => (
+                                <ChartTooltip
+                                    {...props}
+                                    isTouchDevice={isTouchDevice}
+                                    activeIndex={activeIndex}
+                                    tooltipRef={tooltipRef}
+                                    metricMode={metricMode}
+                                    energyUnit={energyUnit}
+                                    showWeather={showWeather}
+                                    temperatureUnit={temperatureUnit}
+                                    getTooltipData={getTooltipData}
+                                />
+                            )}
+                            {...(isTouchDevice ? { active: activeIndex !== null } : {})}
+                        />
                         <Area
                             yAxisId="primary"
                             type="monotone"

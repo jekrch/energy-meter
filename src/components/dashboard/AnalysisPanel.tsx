@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -6,9 +6,11 @@ import { Calendar, CalendarDays, Maximize2, Minimize2, Loader2 } from 'lucide-re
 import { HourRangeFilter } from '../common/HourRangeFilter';
 import { FilterChip } from '../common/FilterChip';
 import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
-import { formatCost, formatCostAxis } from '../../utils/formatters';
+import { formatCostAxis } from '../../utils/formatters';
 import type { MetricMode } from '../charts/MainChart';
-import { type EnergyUnit, formatEnergyValue, formatEnergyAxis } from '../../utils/energyUnits';
+import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
+import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
+import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
@@ -56,11 +58,6 @@ function addPeriodBounds(data: any[], groupBy: 'dayOfWeek' | 'month' | 'hour'): 
     });
 }
 
-const formatTemp = (temp: number, unit: 'C' | 'F') => {
-    if (unit === 'F') return `${Math.round(temp * 9/5 + 32)}°F`;
-    return `${Math.round(temp)}°C`;
-};
-
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
     results, isProcessing, autoZoom, setAutoZoom, analysisDomain, metricMode,
@@ -72,6 +69,9 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         setAnalysisView('timeline');
         setAutoZoom(true);
     }, []);
+
+    const isTouchDevice = useTouchDevice();
+    const { activeIndex, tooltipRef, chartContainerRef, handleChartClick } = useTooltipControl(isTouchDevice);
 
     const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
     const incompleteColor = '#64748b';
@@ -113,24 +113,16 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         });
     }, [results.averages, timelineWithBounds, viewRange, groupBy]);
 
-    // Merge weather data into chart data
     const chartDataWithWeather = React.useMemo(() => {
         const baseData = analysisView === 'averages' ? filteredAverages : timelineWithBounds;
         if (!showWeather || !weatherData?.size) return baseData;
 
         return baseData.map(item => {
             let temp: number | undefined;
-            
+
             if (analysisView === 'timeline' && typeof item.timestamp === 'number') {
-                if (groupBy === 'hour') {
-                    temp = weatherData.get(item.timestamp);
-                } else if (groupBy === 'dayOfWeek') {
-                    temp = weatherData.get(item.timestamp);
-                } else {
-                    temp = weatherData.get(item.timestamp);
-                }
+                temp = weatherData.get(item.timestamp);
             } else if (analysisView === 'averages') {
-                // For averages, compute average temp for this category across all periods
                 const temps: number[] = [];
                 for (const tlItem of timelineWithBounds) {
                     const date = new Date(tlItem.timestamp * 1000);
@@ -142,12 +134,36 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 }
                 temp = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : undefined;
             }
-            
+
             return { ...item, temperature: temp };
         });
     }, [analysisView, filteredAverages, timelineWithBounds, weatherData, showWeather, groupBy]);
 
-    const getDataKey = () => analysisView === 'averages' 
+    // Define tooltip data extraction for this chart
+    const getTooltipData = useCallback((d: any): TooltipData | null => {
+        const energyVal = analysisView === 'averages' ? d.average : d.value;
+        const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
+        const periodName = groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours';
+        const isPartial = !!(analysisView === 'timeline' && viewRange?.start && viewRange?.end
+            && !isPeriodComplete(d, viewRange.start, viewRange.end));
+        const hasNoCompleteData = analysisView === 'averages' && (d.isIncomplete || d.count === 0);
+
+        return {
+            label: analysisView === 'averages' ? d.label : d.fullDate,
+            energyValue: energyVal,
+            costValue: costVal,
+            temperature: d.temperature,
+            count: d.count,
+            countLabel: analysisView === 'averages'
+                ? `${d.count} complete ${periodName} averaged`
+                : `${d.count?.toLocaleString()} readings`,
+            isPartial,
+            noCompleteData: hasNoCompleteData,
+            periodName
+        };
+    }, [analysisView, groupBy, viewRange]);
+
+    const getDataKey = () => analysisView === 'averages'
         ? (metricMode === 'energy' ? 'average' : 'avgCost')
         : (metricMode === 'energy' ? 'value' : 'cost');
 
@@ -187,11 +203,14 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         return [Math.floor(min - padding), Math.ceil(max + padding)];
     }, [weatherData, showWeather]);
 
-    const tempAxisFormatter = (val: number) => temperatureUnit === 'F' ? `${Math.round(val * 9/5 + 32)}°` : `${Math.round(val)}°`;
+    const tempAxisFormatter = (val: number) => temperatureUnit === 'F' ? `${Math.round(val * 9 / 5 + 32)}°` : `${Math.round(val)}°`;
 
     return (
         <div className="flex flex-col h-full">
-            <div className="h-64 sm:h-80 flex-shrink-0 p-4 relative">
+            <div
+                className="h-64 sm:h-80 flex-shrink-0 p-4 relative"
+                ref={chartContainerRef}
+            >
                 {isProcessing && (
                     <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-10">
                         <div className="flex items-center gap-3 bg-slate-800 px-4 py-3 rounded-lg border border-slate-700">
@@ -205,61 +224,33 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     <div className="h-full flex items-center justify-center text-slate-500">No data matches the current filters</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={chartDataWithWeather} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                        <ComposedChart
+                            data={chartDataWithWeather}
+                            margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+                            onClick={handleChartClick}
+                        >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                             <XAxis dataKey={analysisView === 'averages' ? "label" : "fullDate"} stroke="#94a3b8" fontSize={10} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
                                 <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
                             )}
-                            <Tooltip content={({ active, payload }) => {
-                                if (active && payload?.length) {
-                                    const d = payload[0].payload;
-                                    const energyVal = analysisView === 'averages' ? d.average : d.value;
-                                    const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
-                                    const hasCost = typeof costVal === 'number' && costVal > 0;
-                                    const hasTemp = showWeather && typeof d.temperature === 'number';
-                                    const energyLabel = analysisView === 'averages' ? `${energyUnit} avg` : `${energyUnit} total`;
-                                    const costLabel = analysisView === 'averages' ? 'avg' : 'total';
-                                    const periodName = groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours';
-                                    const countLabel = analysisView === 'averages' ? `${d.count} complete ${periodName} averaged` : `${d.count.toLocaleString()} readings`;
-                                    const isIncomplete = analysisView === 'timeline' && viewRange?.start && viewRange?.end && !isPeriodComplete(d, viewRange.start, viewRange.end);
-                                    const hasNoCompleteData = analysisView === 'averages' && (d.isIncomplete || d.count === 0);
-
-                                    return (
-                                        <div className="bg-slate-800 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[150px]">
-                                            <p className="text-slate-400 text-xs font-semibold mb-2">
-                                                {analysisView === 'averages' ? d.label : d.fullDate}
-                                                {isIncomplete && <span className="ml-2 text-slate-500 font-normal">(partial)</span>}
-                                            </p>
-                                            {hasNoCompleteData ? (
-                                                <p className="text-slate-500 text-sm italic">No complete {periodName} in range</p>
-                                            ) : (
-                                                <>
-                                                    <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                                                        {formatEnergyValue(energyVal, energyUnit)}{' '}
-                                                        <span className="text-xs text-slate-500 font-normal">{energyLabel}</span>
-                                                    </p>
-                                                    {hasCost && (
-                                                        <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
-                                                            {formatCost(costVal)} <span className="text-xs text-slate-500 font-normal">{costLabel}</span>
-                                                        </p>
-                                                    )}
-                                                    {hasTemp && (
-                                                        <p className="text-sky-400 font-medium mt-1.5 text-sm">
-                                                            {formatTemp(d.temperature!, temperatureUnit)}
-                                                            <span className="text-xs text-slate-500 font-normal ml-1">avg temp</span>
-                                                        </p>
-                                                    )}
-                                                    <p className="text-xs text-slate-500 mt-2">{countLabel}</p>
-                                                </>
-                                            )}
-                                            {isIncomplete && <p className="text-xs text-slate-500 mt-1 italic">Partial period — not fully in view range</p>}
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            }} />
+                            <Tooltip
+                                content={(props) => (
+                                    <ChartTooltip
+                                        {...props}
+                                        isTouchDevice={isTouchDevice}
+                                        activeIndex={activeIndex}
+                                        tooltipRef={tooltipRef}
+                                        metricMode={metricMode}
+                                        energyUnit={energyUnit}
+                                        showWeather={showWeather}
+                                        temperatureUnit={temperatureUnit}
+                                        getTooltipData={getTooltipData}
+                                    />
+                                )}
+                                {...(isTouchDevice ? { active: activeIndex !== null } : {})}
+                            />
                             <Bar yAxisId="primary" dataKey={getDataKey()} fill={chartColor} radius={[4, 4, 0, 0]} isAnimationActive={false}>
                                 {chartDataWithWeather.map((entry, index) => <Cell key={`cell-${index}`} fill={getBarColor(entry)} />)}
                             </Bar>
