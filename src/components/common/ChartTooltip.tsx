@@ -12,6 +12,8 @@ export interface TooltipData {
     energyValue: number;
     costValue?: number;
     temperature?: number;
+    efficiency?: any;
+    efficiencyLabel?: string;
     count?: number;
     countLabel?: string;
     isIncomplete?: boolean;

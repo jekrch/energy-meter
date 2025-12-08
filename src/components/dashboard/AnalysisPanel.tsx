@@ -11,6 +11,7 @@ import type { MetricMode } from '../charts/MainChart';
 import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
+import { type EfficiencyConfig, calculateEfficiency, getEfficiencyLabel } from '../../utils/efficientyUtils'
 
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
@@ -30,6 +31,8 @@ interface AnalysisPanelProps {
     weatherData?: Map<number, number>;
     showWeather?: boolean;
     temperatureUnit?: 'C' | 'F';
+    efficiencyConfig?: EfficiencyConfig;
+    showEfficiency?: boolean;
 }
 
 // Now uses pre-computed periodStart/periodEnd from useAnalysis
@@ -41,7 +44,8 @@ function isPeriodComplete(periodData: any, viewStart: number, viewEnd: number): 
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
     results, isProcessing, autoZoom, setAutoZoom, analysisDomain, metricMode,
-    viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
+    viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F',
+    efficiencyConfig, showEfficiency = false
 }: AnalysisPanelProps) {
 
     autoZoom = autoZoom;
@@ -109,39 +113,112 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         });
     }, [results.averages, timelineByCategoryKey, viewRange]);
 
+    // Calculate efficiency data for timeline
+    const efficiencyData = React.useMemo(() => {
+        if (!showEfficiency || !weatherData?.size || !efficiencyConfig) return null;
+        
+        // Convert timeline to format expected by calculateEfficiency
+        const timelineData = timeline.map(item => ({
+            timestamp: item.timestamp,
+            value: item.value
+        }));
+        
+        return calculateEfficiency(timelineData, weatherData, efficiencyConfig);
+    }, [timeline, weatherData, showEfficiency, efficiencyConfig]);
+
+    // Create a map for quick efficiency lookup
+    const efficiencyMap = React.useMemo(() => {
+        if (!efficiencyData) return new Map<number, number | null>();
+        const map = new Map<number, number | null>();
+        for (const item of efficiencyData) {
+            map.set(item.timestamp, item.efficiencyIndex);
+        }
+        return map;
+    }, [efficiencyData]);
+
+    // Calculate average efficiency per category for averages view
+    const categoryEfficiency = React.useMemo(() => {
+        if (!efficiencyData || !showEfficiency) return new Map<number, number | null>();
+        
+        // Group efficiency by categoryKey
+        const groups = new Map<number, number[]>();
+        
+        for (const item of efficiencyData) {
+            // Find matching timeline item to get categoryKey
+            const tlItem = timeline.find(t => t.timestamp === item.timestamp);
+            if (!tlItem || item.efficiencyIndex === null) continue;
+            
+            const key = tlItem.categoryKey;
+            const arr = groups.get(key) || [];
+            arr.push(item.efficiencyIndex);
+            groups.set(key, arr);
+        }
+        
+        // Calculate averages
+        const result = new Map<number, number | null>();
+        for (const [key, values] of groups) {
+            if (values.length > 0) {
+                const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+                result.set(key, avg);
+            }
+        }
+        
+        return result;
+    }, [efficiencyData, timeline, showEfficiency]);
+
     // O(n) using pre-built map, no Date creation
     const chartDataWithWeather = React.useMemo(() => {
         const baseData = analysisView === 'averages' ? filteredAverages : timeline;
-        if (!showWeather || !weatherData?.size) return baseData;
-
-        if (analysisView === 'averages') {
-            return baseData.map(item => {
-                const categoryItems = timelineByCategoryKey.get(item.key) || [];
-                let tempSum = 0, tempCount = 0;
-                
-                for (const tlItem of categoryItems) {
-                    const temp = weatherData.get(tlItem.timestamp);
-                    if (temp !== undefined) {
-                        tempSum += temp;
-                        tempCount++;
+        
+        // Add weather data
+        let dataWithWeather = baseData;
+        if (showWeather && weatherData?.size) {
+            if (analysisView === 'averages') {
+                dataWithWeather = baseData.map(item => {
+                    const categoryItems = timelineByCategoryKey.get(item.key) || [];
+                    let tempSum = 0, tempCount = 0;
+                    
+                    for (const tlItem of categoryItems) {
+                        const temp = weatherData.get(tlItem.timestamp);
+                        if (temp !== undefined) {
+                            tempSum += temp;
+                            tempCount++;
+                        }
                     }
-                }
-                
-                return {
+                    
+                    return {
+                        ...item,
+                        temperature: tempCount > 0 ? tempSum / tempCount : undefined
+                    };
+                });
+            } else {
+                // Timeline: simple O(n) mapping
+                dataWithWeather = baseData.map(item => ({
                     ...item,
-                    temperature: tempCount > 0 ? tempSum / tempCount : undefined
-                };
-            });
+                    temperature: typeof item.timestamp === 'number' 
+                        ? weatherData.get(item.timestamp) 
+                        : undefined
+                }));
+            }
         }
 
-        // Timeline: simple O(n) mapping
-        return baseData.map(item => ({
-            ...item,
-            temperature: typeof item.timestamp === 'number' 
-                ? weatherData.get(item.timestamp) 
-                : undefined
-        }));
-    }, [analysisView, filteredAverages, timeline, weatherData, showWeather, timelineByCategoryKey]);
+        // Add efficiency data
+        if (showEfficiency) {
+            if (analysisView === 'averages') {
+                return dataWithWeather.map(item => ({
+                    ...item,
+                    efficiency: categoryEfficiency.get(item.key) ?? null
+                }));
+            } else {
+                return dataWithWeather.map(item => ({
+                    ...item,
+                    efficiency: efficiencyMap.get(item.timestamp) ?? null
+                }));
+            }
+        }
+
+        return dataWithWeather;
+    }, [analysisView, filteredAverages, timeline, weatherData, showWeather, timelineByCategoryKey, showEfficiency, efficiencyMap, categoryEfficiency]);
 
     const getTooltipData = useCallback((d: any): TooltipData | null => {
         const energyVal = analysisView === 'averages' ? d.average : d.value;
@@ -156,6 +233,10 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
             energyValue: energyVal,
             costValue: costVal,
             temperature: d.temperature,
+            efficiency: d.efficiency,
+            efficiencyLabel: d.efficiency !== null && d.efficiency !== undefined 
+                ? getEfficiencyLabel(d.efficiency) 
+                : undefined,
             count: d.count,
             countLabel: analysisView === 'averages'
                 ? `${d.count} complete ${periodName} averaged`
@@ -208,6 +289,13 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const tempAxisFormatter = (val: number) => temperatureUnit === 'F' ? `${Math.round(val * 9 / 5 + 32)}°` : `${Math.round(val)}°`;
 
+    // Calculate right margin based on what's showing
+    const rightMargin = React.useMemo(() => {
+        if (showEfficiency && showWeather && weatherData?.size) return 50;
+        if (showWeather && weatherData?.size) return 10;
+        return 10;
+    }, [showEfficiency, showWeather, weatherData]);
+
     return (
         <div className="flex flex-col h-full">
             {/* Chart Area */}
@@ -230,14 +318,28 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart
                             data={chartDataWithWeather}
-                            margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+                            margin={{ top: 10, right: rightMargin, left: -10, bottom: 5 }}
                             onClick={handleChartClick}
                         >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
                             <XAxis dataKey={analysisView === 'averages' ? "label" : "fullDate"} stroke="#94a3b8" fontSize={10} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
-                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
+                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={30} />
+                            )}
+                            {showEfficiency && (
+                                <YAxis 
+                                    yAxisId="efficiency" 
+                                    orientation="right" 
+                                    stroke="#a78bfa" 
+                                    fontSize={10} 
+                                    tickLine={true} 
+                                    axisLine={false} 
+                                    tickFormatter={(val) => `${val}`}
+                                    domain={[40, 160]}
+                                    width={25}
+                                    hide={!showEfficiency}
+                                />
                             )}
                             <Tooltip
                                 content={(props) => (
@@ -250,6 +352,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                         energyUnit={energyUnit}
                                         showWeather={showWeather}
                                         temperatureUnit={temperatureUnit}
+                                        //showEfficiency={showEfficiency}
                                         getTooltipData={getTooltipData}
                                     />
                                 )}
@@ -260,6 +363,18 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             </Bar>
                             {showWeather && weatherData?.size && (
                                 <Line yAxisId="temperature" type="monotone" dataKey="temperature" stroke="#38bdf8" strokeWidth={2} dot={false} connectNulls />
+                            )}
+                            {showEfficiency && (
+                                <Line 
+                                    yAxisId="efficiency" 
+                                    type="monotone" 
+                                    dataKey="efficiency" 
+                                    stroke="#a78bfa" 
+                                    strokeWidth={2} 
+                                    dot={false} 
+                                    connectNulls
+                                    strokeDasharray="4 2"
+                                />
                             )}
                         </ComposedChart>
                     </ResponsiveContainer>

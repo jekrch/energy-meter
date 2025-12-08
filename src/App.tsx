@@ -22,6 +22,7 @@ import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
 import { WeatherSettings } from './components/common/WeatherSettings';
+import { EfficiencySettings, type EfficiencyConfig } from './components/common/EfficiencySettings';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 
@@ -49,6 +50,14 @@ export default function App() {
   const [groupBy, setGroupBy] = useState<'dayOfWeek' | 'month' | 'hour'>('hour');
   const [analysisView, setAnalysisView] = useState<'averages' | 'timeline'>('averages');
   const [autoZoom, setAutoZoom] = useState(false);
+
+  // Efficiency State
+  const [efficiencyConfig, setEfficiencyConfig] = useState<EfficiencyConfig>({
+    heatingEnabled: true,
+    coolingEnabled: true,
+    balancePointC: 18,
+  });
+  const [showEfficiency, setShowEfficiency] = useState(false);
 
   // Processing Refs
   const [aggregatedData, setAggregatedData] = useState<DataPoint[]>([]);
@@ -355,7 +364,7 @@ export default function App() {
                         {/* Spacer */}
                         <div className="flex-1 min-w-0" />
 
-                        {/* Weather Controls Group */}
+                        {/* Weather & Efficiency Controls Group */}
                         <div className="flex items-center gap-1.5">
                           <WeatherSettings
                             enabled={weather.enabled}
@@ -367,6 +376,17 @@ export default function App() {
                             onToggle={weather.toggleEnabled}
                             onClear={weather.clearLocation}
                           />
+
+                          {/* Efficiency Settings (only when weather enabled) */}
+                          {weather.enabled && weather.location && (
+                            <EfficiencySettings
+                              config={efficiencyConfig}
+                              onChange={setEfficiencyConfig}
+                              showEfficiency={showEfficiency}
+                              onToggleShow={() => setShowEfficiency(!showEfficiency)}
+                              temperatureUnit={temperatureUnit}
+                            />
+                          )}
 
                           {/* Temperature Unit Toggle (only when weather enabled) */}
                           {weather.enabled && weather.location && (
@@ -409,7 +429,27 @@ export default function App() {
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        <AnalysisPanel filters={analysisFilters} setFilters={setAnalysisFilters} groupBy={groupBy} setGroupBy={setGroupBy} analysisView={analysisView} setAnalysisView={setAnalysisView} results={analysisResults} isProcessing={analysisProcessing} autoZoom={autoZoom} setAutoZoom={setAutoZoom} analysisDomain={analysisDomain} metricMode={metricMode} viewRange={viewRange} energyUnit={energyUnit} weatherData={analysisWeatherMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
+                        <AnalysisPanel
+                          filters={analysisFilters}
+                          setFilters={setAnalysisFilters}
+                          groupBy={groupBy}
+                          setGroupBy={setGroupBy}
+                          analysisView={analysisView}
+                          setAnalysisView={setAnalysisView}
+                          results={analysisResults}
+                          isProcessing={analysisProcessing}
+                          autoZoom={autoZoom}
+                          setAutoZoom={setAutoZoom}
+                          analysisDomain={analysisDomain}
+                          metricMode={metricMode}
+                          viewRange={viewRange}
+                          energyUnit={energyUnit}
+                          weatherData={analysisWeatherMap}
+                          showWeather={weather.enabled}
+                          temperatureUnit={temperatureUnit}
+                          efficiencyConfig={efficiencyConfig}
+                          showEfficiency={showEfficiency && weather.enabled}
+                        />
                       </div>
                     )}
 
