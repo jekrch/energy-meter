@@ -1,5 +1,9 @@
 {
   "files": [],
+  "compilerOptions": {
+    "types": ["bun-types"]
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
