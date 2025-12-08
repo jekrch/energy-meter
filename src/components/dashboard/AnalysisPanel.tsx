@@ -32,30 +32,10 @@ interface AnalysisPanelProps {
     temperatureUnit?: 'C' | 'F';
 }
 
+// Now uses pre-computed periodStart/periodEnd from useAnalysis
 function isPeriodComplete(periodData: any, viewStart: number, viewEnd: number): boolean {
-    if (!periodData.periodStart || !periodData.periodEnd) return true;
+    if (periodData.periodStart === undefined || periodData.periodEnd === undefined) return true;
     return viewStart <= periodData.periodStart && viewEnd >= periodData.periodEnd;
-}
-
-function addPeriodBounds(data: any[], groupBy: 'dayOfWeek' | 'month' | 'hour'): any[] {
-    return data.map(item => {
-        if (typeof item.timestamp !== 'number') return item;
-        const date = new Date(item.timestamp * 1000);
-        let periodStart: number, periodEnd: number;
-
-        if (groupBy === 'hour') {
-            periodStart = item.timestamp;
-            periodEnd = periodStart + 3600 - 1;
-        } else if (groupBy === 'dayOfWeek') {
-            periodStart = item.timestamp;
-            periodEnd = periodStart + 86400 - 1;
-        } else {
-            periodStart = item.timestamp;
-            const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
-            periodEnd = Math.floor(monthEnd.getTime() / 1000);
-        }
-        return { ...item, periodStart, periodEnd };
-    });
 }
 
 export const AnalysisPanel = React.memo(function AnalysisPanel({
@@ -80,65 +60,88 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         ? (val: number) => formatEnergyAxis(val, energyUnit)
         : formatCostAxis;
 
-    const timelineWithBounds = React.useMemo(() => addPeriodBounds(results.timeline, groupBy), [results.timeline, groupBy]);
 
+    const timeline = results.timeline;
+
+    // Group timeline items by categoryKey - O(n) with no Date creation
+    const timelineByCategoryKey = React.useMemo(() => {
+        const map = new Map<number, typeof timeline>();
+        for (const item of timeline) {
+            const key = item.categoryKey;
+            if (key === undefined) continue;
+            let arr = map.get(key);
+            if (!arr) {
+                arr = [];
+                map.set(key, arr);
+            }
+            arr.push(item);
+        }
+        return map;
+    }, [timeline]);
+
+    // O(n) using pre-built map, no Date creation
     const filteredAverages = React.useMemo(() => {
         if (!viewRange?.start || !viewRange?.end) return results.averages;
-        const completePeriodsByCategory = new Map<number, { values: number[]; costs: number[] }>();
-
-        for (const item of timelineWithBounds) {
-            if (isPeriodComplete(item, viewRange.start, viewRange.end)) {
-                const date = new Date(item.timestamp * 1000);
-                const categoryKey = groupBy === 'dayOfWeek' ? date.getDay() : groupBy === 'month' ? date.getMonth() : date.getHours();
-                if (!completePeriodsByCategory.has(categoryKey)) {
-                    completePeriodsByCategory.set(categoryKey, { values: [], costs: [] });
-                }
-                const category = completePeriodsByCategory.get(categoryKey)!;
-                category.values.push(item.value);
-                category.costs.push(item.cost);
-            }
-        }
-
+        
         return results.averages.map(avg => {
-            const completeData = completePeriodsByCategory.get(avg.key);
-            if (!completeData || completeData.values.length === 0) {
+            const categoryItems = timelineByCategoryKey.get(avg.key) || [];
+            const completeItems = categoryItems.filter(item => 
+                isPeriodComplete(item, viewRange.start!, viewRange.end!)
+            );
+            
+            if (completeItems.length === 0) {
                 return { ...avg, average: 0, avgCost: 0, count: 0, isIncomplete: true };
             }
+            
+            let sum = 0, costSum = 0;
+            for (const item of completeItems) {
+                sum += item.value;
+                costSum += item.cost;
+            }
+            
             return {
                 ...avg,
-                average: Math.round(completeData.values.reduce((a, b) => a + b, 0) / completeData.values.length),
-                avgCost: Math.round(completeData.costs.reduce((a, b) => a + b, 0) / completeData.costs.length),
-                count: completeData.values.length,
+                average: Math.round(sum / completeItems.length),
+                avgCost: Math.round(costSum / completeItems.length),
+                count: completeItems.length,
                 isIncomplete: false
             };
         });
-    }, [results.averages, timelineWithBounds, viewRange, groupBy]);
+    }, [results.averages, timelineByCategoryKey, viewRange]);
 
+    // O(n) using pre-built map, no Date creation
     const chartDataWithWeather = React.useMemo(() => {
-        const baseData = analysisView === 'averages' ? filteredAverages : timelineWithBounds;
+        const baseData = analysisView === 'averages' ? filteredAverages : timeline;
         if (!showWeather || !weatherData?.size) return baseData;
 
-        return baseData.map(item => {
-            let temp: number | undefined;
-
-            if (analysisView === 'timeline' && typeof item.timestamp === 'number') {
-                temp = weatherData.get(item.timestamp);
-            } else if (analysisView === 'averages') {
-                const temps: number[] = [];
-                for (const tlItem of timelineWithBounds) {
-                    const date = new Date(tlItem.timestamp * 1000);
-                    const categoryKey = groupBy === 'dayOfWeek' ? date.getDay() : groupBy === 'month' ? date.getMonth() : date.getHours();
-                    if (categoryKey === item.key) {
-                        const t = weatherData.get(tlItem.timestamp);
-                        if (t !== undefined) temps.push(t);
+        if (analysisView === 'averages') {
+            return baseData.map(item => {
+                const categoryItems = timelineByCategoryKey.get(item.key) || [];
+                let tempSum = 0, tempCount = 0;
+                
+                for (const tlItem of categoryItems) {
+                    const temp = weatherData.get(tlItem.timestamp);
+                    if (temp !== undefined) {
+                        tempSum += temp;
+                        tempCount++;
                     }
                 }
-                temp = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : undefined;
-            }
+                
+                return {
+                    ...item,
+                    temperature: tempCount > 0 ? tempSum / tempCount : undefined
+                };
+            });
+        }
 
-            return { ...item, temperature: temp };
-        });
-    }, [analysisView, filteredAverages, timelineWithBounds, weatherData, showWeather, groupBy]);
+        // Timeline: simple O(n) mapping
+        return baseData.map(item => ({
+            ...item,
+            temperature: typeof item.timestamp === 'number' 
+                ? weatherData.get(item.timestamp) 
+                : undefined
+        }));
+    }, [analysisView, filteredAverages, timeline, weatherData, showWeather, timelineByCategoryKey]);
 
     const getTooltipData = useCallback((d: any): TooltipData | null => {
         const energyVal = analysisView === 'averages' ? d.average : d.value;
@@ -192,8 +195,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const incompletePeriods = React.useMemo(() => {
         if (analysisView !== 'timeline' || !viewRange?.start || !viewRange?.end) return 0;
-        return timelineWithBounds.filter(item => !isPeriodComplete(item, viewRange.start!, viewRange.end!)).length;
-    }, [timelineWithBounds, viewRange, analysisView]);
+        return timeline.filter(item => !isPeriodComplete(item, viewRange.start!, viewRange.end!)).length;
+    }, [timeline, viewRange, analysisView]);
 
     const tempDomain = React.useMemo(() => {
         if (!showWeather || !weatherData?.size) return [0, 40];
@@ -318,21 +321,6 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
                         {/* Secondary Controls */}
                         <div className="flex items-center gap-1.5">
-                            {/* Auto Zoom Toggle */}
-                            {/* <button
-                                onClick={() => setAutoZoom(prev => !prev)}
-                                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all ${
-                                    autoZoom
-                                        ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30'
-                                        : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 ring-1 ring-slate-700/50 hover:ring-slate-600'
-                                }`}
-                                title={autoZoom ? 'Auto fit enabled' : 'Full scale'}
-                            >
-                                {autoZoom ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                            </button> */}
-
-                            {/* Weather Settings would go here - passed as a prop or imported */}
-                            {/* <WeatherSettings ... /> */}
                         </div>
                     </div>
 
