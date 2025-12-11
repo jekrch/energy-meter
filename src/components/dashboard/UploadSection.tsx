@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
-import { 
-    Upload, 
-    FileText, 
-    AlertCircle, 
-    Info, 
-    ChevronDown, 
-    ChevronUp, 
-    Download, 
-    Lock, 
-    Github, 
-    ExternalLink, 
+import {
+    Upload,
+    FileText,
+    AlertCircle,
+    Info,
+    ChevronDown,
+    ChevronUp,
+    Download,
+    Lock,
+    Github,
+    ExternalLink,
     User,
     Scissors,
-    Zap 
+    Zap,
+    Building2,
 } from 'lucide-react';
 
 interface UploadSectionProps {
@@ -56,19 +57,19 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                             disabled={loading}
                         />
                     </label>
-                    
+
                     <button
                         onClick={onLoadSample}
                         disabled={loading}
                         className="w-full border-2 border-slate-700 text-slate-400 font-medium py-3 px-6 rounded-lg hover:border-emerald-500 hover:text-emerald-400 transition-all"
                     >
-                        Load Demo (5,000 pts)
+                        Load Demo
                     </button>
                 </div>
 
                 {/* --- Collapsible Info Section --- */}
                 <div className="mt-8 pt-6 border-t border-slate-800">
-                    <button 
+                    <button
                         onClick={() => setShowInfo(!showInfo)}
                         className="flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-emerald-400 transition-colors w-full"
                     >
@@ -80,13 +81,13 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                     {showInfo && (
                         <div className="mt-4 bg-slate-800/50 rounded-lg overflow-hidden animate-in fade-in slide-in-from-top-2 text-left">
                             <div className="flex border-b border-slate-700">
-                                <button 
+                                <button
                                     onClick={() => setActiveTab('format')}
                                     className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'format' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
                                     How to get it
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => setActiveTab('privacy')}
                                     className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'privacy' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
@@ -104,9 +105,9 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                             <p className="text-slate-400 text-xs leading-relaxed mb-3">
                                                 Green Button is an industry-standard data format that allows utility customers to access and share their energy usage data securely. It creates a common XML language for energy data across different utility providers.
                                             </p>
-                                            <a 
-                                                href="https://www.greenbuttondata.org/" 
-                                                target="_blank" 
+                                            <a
+                                                href="https://www.greenbuttondata.org/"
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-300 transition-colors hover:underline"
                                             >
@@ -115,21 +116,51 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                             </a>
                                         </div>
 
-                                        <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
-                                            <Download className="w-4 h-4" /> Instructions
-                                        </h4>
-                                        <ol className="list-decimal ml-4 space-y-2 text-slate-400 text-sm marker:text-slate-600">
-                                            <li>Log in to your utility's website.</li>
-                                            <li>Find "Green Button", "Download My Data", or "Export Usage".</li>
-                                            <li>Select <strong>XML</strong> format (often called "Green Button Download").</li>
-                                        </ol>
+                                        <div className="mb-5 pb-5 border-b border-slate-700/50">
+                                            <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
+                                                <Download className="w-4 h-4" /> General Instructions
+                                            </h4>
+                                            <ol className="list-decimal ml-4 space-y-2 text-slate-400 text-sm marker:text-slate-600">
+                                                <li>Log in to your utility's website.</li>
+                                                <li>Find "Green Button", "Download My Data", or "Export Usage".</li>
+                                                <li>Select <strong>XML</strong> format (often called "Green Button Download").</li>
+                                            </ol>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="font-semibold text-sky-400 mb-2 flex items-center gap-2 text-sm">
+                                                <Building2 className="w-4 h-4" /> Xcel Energy Customers
+                                            </h4>
+                                            <ol className="list-decimal ml-4 space-y-2 text-slate-400 text-sm marker:text-slate-600">
+                                                <li>
+                                                    Log in at{' '}
+                                                    <a
+                                                        href="https://my.xcelenergy.com/"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-sky-400 hover:text-sky-300 hover:underline"
+                                                    >
+                                                        my.xcelenergy.com
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    Click{' '}
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <strong>Visit My Energy</strong>
+                                                        <ExternalLink className="w-3 h-3" />
+                                                    </span>
+                                                </li>
+                                                <li>Select <strong>View My Usage & Cost</strong>.</li>
+                                                <li>Click the <strong>Green Button Download</strong> button below the chart.</li>
+                                            </ol>
+                                        </div>
                                     </>
                                 ) : (
                                     <div className="space-y-4">
                                         <div className="bg-slate-900/50 p-3 rounded border border-slate-700/50 flex gap-3">
                                             <Lock className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                                             <p className="text-xs text-slate-400">
-                                                We process this file <strong>locally in your browser</strong>. 
+                                                We process this file <strong>locally in your browser</strong>.
                                                 No personal information from your file is sent to us or any third parties.
                                             </p>
                                         </div>
@@ -160,9 +191,9 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
             <div className="mt-8 flex flex-col items-center gap-3 text-sm text-slate-500">
                 <div className="flex items-center gap-1">
                     <span>created by</span>
-                    <a 
-                        href="https://jacobkrch.com" 
-                        target="_blank" 
+                    <a
+                        href="https://jacobkrch.com"
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 font-medium text-slate-400 hover:text-emerald-400 transition-colors"
                     >
@@ -170,9 +201,9 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                         Jacob Krch
                     </a>
                 </div>
-                <a 
-                    href="https://github.com/jekrch/energy-meter" 
-                    target="_blank" 
+                <a
+                    href="https://github.com/jekrch/energy-meter"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs border border-slate-800 bg-slate-900/50 px-3 py-1.5 rounded-full hover:bg-slate-800 hover:text-emerald-400 transition-colors"
                 >
