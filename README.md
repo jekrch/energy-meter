@@ -1,8 +1,11 @@
-# GB Energy Meter
+# GB Energy Meter :zap:
+[![Test](https://github.com/jekrch/energy-meter/actions/workflows/test.yml/badge.svg)](https://github.com/jekrch/energy-meter/actions/workflows/test.yml)
 
 A web application for visualizing and analyzing energy consumption data from Green Button XML files. Built with React, TypeScript, and Vite.
 
 [gbmeter.com](https://gbmeter.com)
+
+<img width="450" alt="image" src="https://github.com/user-attachments/assets/3bdce2a0-e506-49a9-abe1-2bd064c4a9dd" />
 
 ## Features
 
