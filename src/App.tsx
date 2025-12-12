@@ -210,7 +210,7 @@ export default function App() {
   };
 
   const loadSampleData = () => {
-    setLoading(true); setFileName("sample_5000pts.xml"); setError(null); setPage(1);
+    setLoading(true); setFileName("demo.xml"); setError(null); setPage(1);
     setTimeout(() => { setRawData(generateSampleData()); setResolution('DAILY'); setLoading(false); }, 300);
   };
 
