@@ -239,7 +239,7 @@ export const InsightsModal = React.memo(function InsightsModal({
                         <div className="text-sm text-slate-200 group-hover:text-white transition-colors">
                           {preset.question}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate">
+                        <div className="text-[11px] text-slate-500">
                           {preset.description}
                         </div>
                       </div>

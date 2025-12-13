@@ -27,3 +27,46 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   fill: #49596c !important;
   fill-opacity: 0.8 !important;
 }
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+/* Webkit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Hide scrollbar when not scrolling (optional - creates cleaner look) */
+::-webkit-scrollbar-thumb:vertical {
+  min-height: 30px;
+}
+
+::-webkit-scrollbar-thumb:horizontal {
+  min-width: 30px;
+}
+
+/* Corner where scrollbars meet */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
