@@ -77,7 +77,15 @@ export default function App() {
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
 
-  const { filters: analysisFilters, setFilters: setAnalysisFilters, results: analysisResults, isProcessing: analysisProcessing } = useAnalysis(activeTab, viewData, groupBy);
+  const { 
+    filters: analysisFilters, 
+    setFilters: setAnalysisFilters, 
+    results: analysisResults, 
+    isProcessing: analysisProcessing,
+    isDataSampled,
+    sampledCount,
+    originalCount
+  } = useAnalysis(activeTab, viewData, groupBy);
 
   useEffect(() => {
     const currentProcess = ++processingRef.current;
@@ -409,7 +417,28 @@ export default function App() {
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        <AnalysisPanel filters={analysisFilters} setFilters={setAnalysisFilters} groupBy={groupBy} setGroupBy={setGroupBy} analysisView={analysisView} setAnalysisView={setAnalysisView} results={analysisResults} isProcessing={analysisProcessing} autoZoom={autoZoom} setAutoZoom={setAutoZoom} analysisDomain={analysisDomain} metricMode={metricMode} viewRange={viewRange} energyUnit={energyUnit} weatherData={analysisWeatherMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
+                        <AnalysisPanel 
+                          filters={analysisFilters} 
+                          setFilters={setAnalysisFilters} 
+                          groupBy={groupBy} 
+                          setGroupBy={setGroupBy} 
+                          analysisView={analysisView} 
+                          setAnalysisView={setAnalysisView} 
+                          results={analysisResults} 
+                          isProcessing={analysisProcessing} 
+                          isDataSampled={isDataSampled}
+                          sampledCount={sampledCount}
+                          originalCount={originalCount}
+                          autoZoom={autoZoom} 
+                          setAutoZoom={setAutoZoom} 
+                          analysisDomain={analysisDomain} 
+                          metricMode={metricMode} 
+                          viewRange={viewRange} 
+                          energyUnit={energyUnit} 
+                          weatherData={analysisWeatherMap} 
+                          showWeather={weather.enabled} 
+                          temperatureUnit={temperatureUnit} 
+                        />
                       </div>
                     )}
 

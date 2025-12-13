@@ -14,6 +14,7 @@ import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl
 import { useDebouncedValue } from '../../hooks/useDebounceValue';
 import { useDeferredLoading } from '../../hooks/useDeferredLoading';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
+import { downsampleLTTB } from '../../utils/dataUtils';
 
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
@@ -24,6 +25,9 @@ interface AnalysisPanelProps {
     setAnalysisView: (v: 'averages' | 'timeline') => void;
     results: { filtered: DataPoint[]; averages: any[]; timeline: any[] };
     isProcessing: boolean;
+    isDataSampled?: boolean;
+    sampledCount?: number;
+    originalCount?: number;
     autoZoom: boolean;
     setAutoZoom: React.Dispatch<React.SetStateAction<boolean>>;
     analysisDomain: [number, number];
@@ -54,7 +58,8 @@ const DEVICE_CONFIG = getDeviceConfig();
 
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
-    results, isProcessing, setAutoZoom, analysisDomain, metricMode,
+    results, isProcessing, isDataSampled = false, originalCount,
+    setAutoZoom, analysisDomain, metricMode,
     viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
 }: AnalysisPanelProps) {
 
@@ -63,6 +68,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     });
     const [userHasSetTempFilter, setUserHasSetTempFilter] = useState(false);
     
+    const MAX_ANALYSIS_POINTS = 500;
+
     // useTransition for non-urgent updates - keeps UI responsive
     const [isPending, startTransition] = useTransition();
 
@@ -229,10 +236,16 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
             };
         });
 
+        const timelineForChart = analysisView === 'averages' 
+            ? averages  // Averages are already small (7, 12, or 24 items)
+            : filtered.length > MAX_ANALYSIS_POINTS 
+                ? downsampleLTTB(filtered, MAX_ANALYSIS_POINTS)
+                : filtered;
+
         return {
-            chartData: analysisView === 'averages' ? averages : filtered,
+            chartData: timelineForChart,
             computedAverages: averages,
-            filteredTimeline: filtered
+            filteredTimeline: filtered  // Keep full data for stats/counts
         };
     }, [
         results.timeline, 
@@ -561,6 +574,11 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                     {results.filtered.length.toLocaleString()} readings
                                     {hasActiveFilters && (
                                         <span className="text-slate-600"> (filtered)</span>
+                                    )}
+                                    {isDataSampled && (
+                                        <span className="text-amber-500/70" title={`Sampled from ${originalCount?.toLocaleString()} for performance`}>
+                                            {' '}· sampled
+                                        </span>
                                     )}
                                 </>
                             )}
