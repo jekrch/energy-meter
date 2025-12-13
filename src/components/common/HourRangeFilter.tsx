@@ -78,6 +78,7 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
 
   const handlePointerDown = useCallback((e: React.PointerEvent, type: DragType) => {
     e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setIsDragging(type);
     setDragStartPos(e.clientX);
     setDragStartValues({ start: localStart, end: localEnd });
@@ -180,12 +181,15 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
       </div>
 
       {/* Range Slider */}
-      <div className="relative pt-1 pb-5 touch-none select-none">
+      <div className="relative pt-1 pb-5 touch-none select-none overflow-hidden">
         <div 
           ref={trackRef}
-          className="h-2 bg-slate-800 rounded-full cursor-pointer"
+          className="relative h-8 mx-2 flex items-center cursor-pointer"
           onPointerDown={(e) => handlePointerDown(e, 'track')}
         >
+          {/* Background track */}
+          <div className="absolute inset-x-0 h-2 bg-slate-800 rounded-full" />
+          
           {/* Active range bar */}
           <div 
             className={`absolute h-2 rounded-full transition-colors ${
@@ -198,29 +202,37 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
             }}
           />
           
-          {/* Start handle */}
+          {/* Start handle - large hit area with small visible circle */}
           <div 
-            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-all cursor-grab active:cursor-grabbing ${
-              isDragging === 'start' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            className={`absolute w-10 h-10 flex items-center justify-center cursor-grab ${
+              isDragging === 'start' ? 'cursor-grabbing' : ''
             }`}
-            style={{ left: `${rangeLeft}%`, transform: 'translate(-50%, -50%)' }}
+            style={{ left: `${rangeLeft}%`, transform: 'translateX(-50%)' }}
             onPointerDown={(e) => {
               e.stopPropagation();
               handlePointerDown(e, 'start');
             }}
-          />
+          >
+            <div className={`w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-transform ${
+              isDragging === 'start' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            }`} />
+          </div>
           
-          {/* End handle */}
+          {/* End handle - large hit area with small visible circle */}
           <div 
-            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-all cursor-grab active:cursor-grabbing ${
-              isDragging === 'end' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            className={`absolute w-10 h-10 flex items-center justify-center cursor-grab ${
+              isDragging === 'end' ? 'cursor-grabbing' : ''
             }`}
-            style={{ left: `${rangeLeft + rangeWidth}%`, transform: 'translate(-50%, -50%)' }}
+            style={{ left: `${rangeLeft + rangeWidth}%`, transform: 'translateX(-50%)' }}
             onPointerDown={(e) => {
               e.stopPropagation();
               handlePointerDown(e, 'end');
             }}
-          />
+          >
+            <div className={`w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-transform ${
+              isDragging === 'end' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            }`} />
+          </div>
         </div>
 
         {/* Hour tick labels */}

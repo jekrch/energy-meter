@@ -11,6 +11,7 @@ import { formatCostAxis } from '../../utils/formatters';
 import type { MetricMode } from '../charts/MainChart';
 import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
+import { useDebouncedValue } from '../../hooks/useDebounceValue';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 
 interface AnalysisPanelProps {
@@ -44,11 +45,18 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
 }: AnalysisPanelProps) {
 
-    const [tempFilter, setTempFilter] = useState<{ min: number | null; max: number | null }>({ 
-        min: null, max: null 
+    const [tempFilter, setTempFilter] = useState<{ min: number | null; max: number | null }>({
+        min: null, max: null
     });
-    // Track whether user has explicitly interacted with the temp slider
     const [userHasSetTempFilter, setUserHasSetTempFilter] = useState(false);
+
+    // Debounce temp filter values to prevent mobile crashes
+    // The 200ms delay gives the UI time to breathe between expensive computations
+    const debouncedTempMin = useDebouncedValue(tempFilter.min, 200);
+    const debouncedTempMax = useDebouncedValue(tempFilter.max, 200);
+
+    // Track if we're waiting for debounce to settle
+    const isTempDebouncing = tempFilter.min !== debouncedTempMin || tempFilter.max !== debouncedTempMax;
 
     autoZoom = autoZoom;
     React.useEffect(() => {
@@ -68,7 +76,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const timeline = results.timeline;
 
-    // Step 1: Add weather data to timeline (always computed, regardless of view)
+    // Step 1: Add weather data to timeline
     const timelineWithWeather = React.useMemo(() => {
         if (!showWeather || !weatherData?.size) return timeline;
         return timeline.map(item => ({
@@ -77,7 +85,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         }));
     }, [timeline, weatherData, showWeather]);
 
-    // Step 2: Calculate temp bounds from timeline with weather
+    // Step 2: Calculate temp bounds
     const tempBoundsCelsius = useMemo(() => {
         if (!showWeather || !weatherData?.size) return null;
         const temps = timelineWithWeather
@@ -90,15 +98,15 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const tempBoundsDisplay = useMemo(() => {
         if (!tempBoundsCelsius) return null;
         if (temperatureUnit === 'F') {
-            return { 
-                min: Math.floor(celsiusToFahrenheit(tempBoundsCelsius.min)), 
-                max: Math.ceil(celsiusToFahrenheit(tempBoundsCelsius.max)) 
+            return {
+                min: Math.floor(celsiusToFahrenheit(tempBoundsCelsius.min)),
+                max: Math.ceil(celsiusToFahrenheit(tempBoundsCelsius.max))
             };
         }
         return { min: Math.floor(tempBoundsCelsius.min), max: Math.ceil(tempBoundsCelsius.max) };
     }, [tempBoundsCelsius, temperatureUnit]);
 
-    // Reset temp filter when unit changes (clears any user selection)
+    // Reset temp filter when unit changes
     React.useEffect(() => {
         if (tempBoundsDisplay) {
             setTempFilter({ min: null, max: null });
@@ -106,25 +114,25 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         }
     }, [temperatureUnit]);
 
-    // Only consider temp filter active if user has explicitly set it AND values differ from bounds
+    // Use DEBOUNCED values to determine if filter is active
     const isTempFilterActive = useMemo(() => {
         if (!userHasSetTempFilter) return false;
-        if (!tempBoundsDisplay || tempFilter.min === null || tempFilter.max === null) return false;
-        return tempFilter.min > tempBoundsDisplay.min || tempFilter.max < tempBoundsDisplay.max;
-    }, [tempFilter, tempBoundsDisplay, userHasSetTempFilter]);
+        if (!tempBoundsDisplay || debouncedTempMin === null || debouncedTempMax === null) return false;
+        return debouncedTempMin > tempBoundsDisplay.min || debouncedTempMax < tempBoundsDisplay.max;
+    }, [debouncedTempMin, debouncedTempMax, tempBoundsDisplay, userHasSetTempFilter]);
 
-    // Step 3: Filter timeline by temperature (this is the source of truth for temp filtering)
+    // Step 3: Filter timeline by temperature using DEBOUNCED values
     const timelineFilteredByTemp = useMemo(() => {
-        if (!isTempFilterActive || tempFilter.min === null || tempFilter.max === null) return timelineWithWeather;
-        const filterMinC = temperatureUnit === 'F' ? fahrenheitToCelsius(tempFilter.min) : tempFilter.min;
-        const filterMaxC = temperatureUnit === 'F' ? fahrenheitToCelsius(tempFilter.max) : tempFilter.max;
+        if (!isTempFilterActive || debouncedTempMin === null || debouncedTempMax === null) return timelineWithWeather;
+        const filterMinC = temperatureUnit === 'F' ? fahrenheitToCelsius(debouncedTempMin) : debouncedTempMin;
+        const filterMaxC = temperatureUnit === 'F' ? fahrenheitToCelsius(debouncedTempMax) : debouncedTempMax;
         return timelineWithWeather.filter(d => {
             if (d.temperature === undefined) return false;
             return d.temperature >= filterMinC && d.temperature <= filterMaxC;
         });
-    }, [timelineWithWeather, tempFilter, temperatureUnit, isTempFilterActive]);
+    }, [timelineWithWeather, debouncedTempMin, debouncedTempMax, temperatureUnit, isTempFilterActive]);
 
-    // Step 4: Group temp-filtered timeline by category key (for computing averages)
+    // Step 4: Group temp-filtered timeline by category key
     const timelineFilteredByCategoryKey = React.useMemo(() => {
         const map = new Map<number, typeof timelineFilteredByTemp>();
         for (const item of timelineFilteredByTemp) {
@@ -137,38 +145,38 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         return map;
     }, [timelineFilteredByTemp]);
 
-    // Step 5: Compute averages from temp-filtered timeline (also applying viewRange filter)
+    // Step 5: Compute averages from temp-filtered timeline
     const computedAverages = React.useMemo(() => {
         return results.averages.map(avg => {
             const categoryItems = timelineFilteredByCategoryKey.get(avg.key) || [];
-            const completeItems = (!viewRange?.start || !viewRange?.end) 
-                ? categoryItems 
+            const completeItems = (!viewRange?.start || !viewRange?.end)
+                ? categoryItems
                 : categoryItems.filter(item => isPeriodComplete(item, viewRange.start!, viewRange.end!));
-            
+
             if (completeItems.length === 0) {
                 return { ...avg, average: 0, avgCost: 0, count: 0, isIncomplete: true, temperature: undefined };
             }
             let sum = 0, costSum = 0, tempSum = 0, tempCount = 0;
-            for (const item of completeItems) { 
-                sum += item.value; 
+            for (const item of completeItems) {
+                sum += item.value;
                 costSum += item.cost;
                 if (item.temperature !== undefined) {
                     tempSum += item.temperature;
                     tempCount++;
                 }
             }
-            return { 
-                ...avg, 
-                average: Math.round(sum / completeItems.length), 
-                avgCost: Math.round(costSum / completeItems.length), 
-                count: completeItems.length, 
+            return {
+                ...avg,
+                average: Math.round(sum / completeItems.length),
+                avgCost: Math.round(costSum / completeItems.length),
+                count: completeItems.length,
                 isIncomplete: false,
                 temperature: tempCount > 0 ? tempSum / tempCount : undefined
             };
         });
     }, [results.averages, timelineFilteredByCategoryKey, viewRange]);
 
-    // Step 6: Final chart data - use computed averages or filtered timeline based on view
+    // Step 6: Final chart data
     const chartData = React.useMemo(() => {
         return analysisView === 'averages' ? computedAverages : timelineFilteredByTemp;
     }, [analysisView, computedAverages, timelineFilteredByTemp]);
@@ -201,18 +209,26 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const setWeekends = () => setFilters(prev => ({ ...prev, daysOfWeek: [0, 6] }));
     const clearDays = () => setFilters(prev => ({ ...prev, daysOfWeek: [] }));
     const clearMonths = () => setFilters(prev => ({ ...prev, months: [] }));
-    
+
     const resetTempFilter = () => {
         setTempFilter({ min: null, max: null });
         setUserHasSetTempFilter(false);
     };
 
-    // Handler for when user interacts with temp slider
     const handleTempFilterChange = (min: number, max: number) => {
-        setTempFilter({ min, max });
-        setUserHasSetTempFilter(true);
+        // If user sets full range (or beyond), treat as "no filter" to track bounds
+        // This prevents bounds expansion from creating unintended filters
+        if (tempBoundsDisplay && min <= tempBoundsDisplay.min && max >= tempBoundsDisplay.max) {
+            setTempFilter({ min: null, max: null });
+            setUserHasSetTempFilter(false);
+        } else {
+            setTempFilter({ min, max });
+            setUserHasSetTempFilter(true);
+        }
     };
 
+    // Include debouncing state in processing indicator
+    const isFilterProcessing = isProcessing || isTempDebouncing;
     const hasActiveFilters = filters.daysOfWeek.length > 0 || filters.months.length > 0 || filters.hourStart > 0 || filters.hourEnd < 23 || isTempFilterActive;
 
     const incompletePeriods = React.useMemo(() => {
@@ -233,7 +249,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     return (
         <div className="flex flex-col h-full">
             <div className="h-64 sm:h-80 flex-shrink-0 p-4 relative" ref={chartContainerRef}>
-                {isProcessing && (
+                {isFilterProcessing && (
                     <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-10">
                         <div className="flex items-center gap-3 bg-slate-800 px-4 py-3 rounded-lg border border-slate-700">
                             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
@@ -241,7 +257,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                         </div>
                     </div>
                 )}
-                {!isProcessing && chartData.length === 0 ? (
+                {!isFilterProcessing && chartData.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2">
                         <span className="text-sm">No data matches the current filters</span>
                         {isTempFilterActive && (
@@ -287,8 +303,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                         <div className="flex-1 min-w-0" />
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
-                        <span>{isProcessing ? (<span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin text-emerald-400" />Processing...</span>) : (<>{results.filtered.length.toLocaleString()} readings{hasActiveFilters && <span className="text-slate-600"> (filtered)</span>}</>)}</span>
-                        {!isProcessing && analysisView === 'timeline' && (
+                        <span>{isFilterProcessing ? (<span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin text-emerald-400" />Processing...</span>) : (<>{results.filtered.length.toLocaleString()} readings{hasActiveFilters && <span className="text-slate-600"> (filtered)</span>}</>)}</span>
+                        {!isFilterProcessing && analysisView === 'timeline' && (
                             <span className="text-slate-600">{chartData.length} {groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'}{incompletePeriods > 0 && (<span className="text-amber-500/70"> · {incompletePeriods} partial</span>)}</span>
                         )}
                     </div>
