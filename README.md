@@ -13,6 +13,7 @@ A web application for visualizing and analyzing energy consumption data from Gre
 - **Interactive Charts** — Visualize consumption with zoomable, responsive area charts
 - **Multi-Resolution Views** — View data at raw, hourly, daily, or weekly aggregations
 - **Analysis Dashboard** — Analyze patterns by hour, day of week, or month with timeline and average views
+- **Guided Insights** — Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
 - **Cost Tracking** — Toggle between energy usage and cost metrics with automatic rate calculations
 - **Weather Overlay** — Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
 - **Flexible Units** — Switch between Wh, kWh, and MWh display units
