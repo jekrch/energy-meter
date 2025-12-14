@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon } from 'lucide-react';
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
@@ -22,6 +22,7 @@ import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
 import { WeatherSettings } from './components/common/WeatherSettings';
+import { InsightsModal, type InsightPreset } from './components/common/InsightsModal';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 
@@ -233,6 +234,22 @@ export default function App() {
   const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
   const handleChartSelection = (range: { start: number; end: number }) => { setViewRange({ start: range.start, end: range.end }); setPage(1); };
 
+  // Insight selection handler - switches to analysis tab and applies preset
+  const handleSelectInsight = useCallback((preset: InsightPreset) => {
+    setActiveTab('analysis');
+    setAnalysisFilters({
+      daysOfWeek: preset.filters.daysOfWeek ?? [],
+      months: preset.filters.months ?? [],
+      hourStart: preset.filters.hourStart ?? 0,
+      hourEnd: preset.filters.hourEnd ?? 23,
+    });
+    setGroupBy(preset.groupBy);
+    setAnalysisView(preset.analysisView);
+    if (preset.metricMode) {
+      setMetricMode(preset.metricMode);
+    }
+  }, [setAnalysisFilters]);
+
   // Helper: show chart/analysis controls
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
 
@@ -272,6 +289,33 @@ export default function App() {
                 </div>
 
                 <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
+
+                {/* Explore Insights Card */}
+                <InsightsModal onSelectInsight={handleSelectInsight}>
+                  {(openModal) => (
+                    <button
+                      onClick={openModal}
+                      className="w-full group bg-gradient-to-r from-slate-500/10 via-slate-500/10 to-amber-500/10 hover:from-slate-500/20 hover:via-amber-500/20 hover:to-amber-500/20 border border-slate-500/30 hover:border-amber-400/50 rounded-lg p-4 transition-all duration-300"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-gradient-to-br from-amber-600 to-amber-400 p-2.5 rounded-lg shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
+                            <LightbulbIcon className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="text-left">
+                            <h3 className="text-sm font-semibold text-slate-100 group-hover:text-white transition-colors">
+                              Answer Questions About Your Usage
+                            </h3>
+                            <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors mt-0.5">
+                              Tap to explore guided insights like peak hours, seasonal trends, and cost patterns
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    </button>
+                  )}
+                </InsightsModal>
 
                 <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
                   {/* Header Controls - Reorganized */}

@@ -129,10 +129,12 @@ const CATEGORIES = [
 
 interface InsightsModalProps {
   onSelectInsight: (preset: InsightPreset) => void;
+  children?: (openModal: () => void) => React.ReactNode;
 }
 
 export const InsightsModal = React.memo(function InsightsModal({
   onSelectInsight,
+  children,
 }: InsightsModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -263,6 +265,17 @@ export const InsightsModal = React.memo(function InsightsModal({
     document.body
   ) : null;
 
+  // If children render prop is provided, use it for custom trigger
+  if (children) {
+    return (
+      <>
+        {children(openModal)}
+        {modal}
+      </>
+    );
+  }
+
+  // Default trigger button
   return (
     <>
       <button

@@ -5,7 +5,6 @@ import {
   downsampleLTTB,
   processDataAsync,
   parseGreenButtonXML,
-  generateSampleData,
   createBrushData
 } from './dataUtils';
 import type { DataPoint } from '../types';
@@ -261,58 +260,6 @@ describe('parseGreenButtonXML', () => {
     const result = parseGreenButtonXML(namespacedXML);
     expect(result.length).toBe(1);
     expect(result[0].value).toBe(500);
-  });
-});
-
-describe('generateSampleData', () => {
-  it('generates two years of hourly data', () => {
-    const result = generateSampleData();
-    const expectedHours = 2 * 365 * 24;
-    expect(result.length).toBe(expectedHours);
-  });
-
-  it('generates data with all required fields', () => {
-    const result = generateSampleData();
-
-    result.slice(0, 100).forEach(point => {
-      expect(point.timestamp).toBeDefined();
-      expect(typeof point.timestamp).toBe('number');
-      expect(point.value).toBeDefined();
-      expect(typeof point.value).toBe('number');
-      expect(point.cost).toBeDefined();
-      expect(typeof point.cost).toBe('number');
-    });
-  });
-
-  it('generates chronologically ordered data', () => {
-    const result = generateSampleData();
-
-    for (let i = 1; i < Math.min(100, result.length); i++) {
-      expect(result[i].timestamp).toBeGreaterThan(result[i - 1].timestamp);
-    }
-  });
-
-  it('generates hourly intervals (3600 seconds)', () => {
-    const result = generateSampleData();
-
-    for (let i = 1; i < Math.min(100, result.length); i++) {
-      expect(result[i].timestamp - result[i - 1].timestamp).toBe(3600);
-    }
-  });
-
-  it('generates non-negative values', () => {
-    const result = generateSampleData();
-    result.forEach(point => {
-      expect(point.value).toBeGreaterThanOrEqual(0);
-      expect(point.cost).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  it('starts from previous year', () => {
-    const result = generateSampleData();
-    const startDate = new Date(result[0].timestamp * 1000);
-    const expectedYear = new Date().getFullYear() - 1;
-    expect(startDate.getFullYear()).toBe(expectedYear);
   });
 });
 

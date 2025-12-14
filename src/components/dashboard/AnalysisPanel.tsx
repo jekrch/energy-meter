@@ -6,7 +6,6 @@ import { Calendar, CalendarDays, Loader2, Thermometer } from 'lucide-react';
 import { HourRangeFilter } from '../common/HourRangeFilter';
 import { FilterChip } from '../common/FilterChip';
 import { TempRangeSlider, celsiusToFahrenheit, fahrenheitToCelsius } from '../common/TempRangeSlider';
-import { InsightsModal, type InsightPreset } from '../common/InsightsModal';
 import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
 import { formatCostAxis } from '../../utils/formatters';
 import { buildChartDescription } from '../../utils/chartDescription';
@@ -58,7 +57,7 @@ const DEVICE_CONFIG = getDeviceConfig();
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
     results, isProcessing, isDataSampled = false, originalCount,
-    setAutoZoom, analysisDomain, metricMode, setMetricMode,
+    setAutoZoom, analysisDomain, metricMode,
     viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
 }: AnalysisPanelProps) {
 
@@ -282,24 +281,6 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         }
     }, [tempBoundsDisplay]);
 
-    const handleSelectInsight = useCallback((preset: InsightPreset) => {
-        startTransition(() => {
-            setFilters({
-                daysOfWeek: preset.filters.daysOfWeek ?? [],
-                months: preset.filters.months ?? [],
-                hourStart: preset.filters.hourStart ?? 0,
-                hourEnd: preset.filters.hourEnd ?? 23,
-            });
-            setGroupBy(preset.groupBy);
-            setAnalysisView(preset.analysisView);
-            if (preset.metricMode && setMetricMode) {
-                setMetricMode(preset.metricMode);
-            }
-            setTempFilter({ min: null, max: null });
-            setUserHasSetTempFilter(false);
-        });
-    }, [setFilters, setGroupBy, setAnalysisView, setMetricMode]);
-
     const isFilterProcessing = isProcessing || isTempDebouncing || isPending;
     const showProcessingOverlay = useDeferredLoading(isFilterProcessing, 150, 300);
     
@@ -337,7 +318,6 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             <div className="text-xs text-slate-400 mt-0.5">Filtered to {chartDescription.filters.join(' · ')}</div>
                         )}
                     </div>
-                    <InsightsModal onSelectInsight={handleSelectInsight} />
                 </div>
             </div>
 

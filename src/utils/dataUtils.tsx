@@ -4,7 +4,7 @@ import { formatShortDate } from './formatters';
 
 const CHUNK_SIZE = 2000;
 
-// LTTB Downsampling - now preserves cost data
+// LTTB Downsampling 
 export const downsampleLTTB = (data: DataPoint[], threshold: number): DataPoint[] => {
   if (data.length <= threshold) return data;
 
@@ -150,64 +150,140 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
   }
 };
 
-// Mock Data Generator - now includes realistic cost data
+// Mock Data Generator - realistic energy patterns with smooth curves
 export const generateSampleData = (): DataPoint[] => {
   const points: DataPoint[] = [];
   const startYear = new Date().getFullYear() - 1;
   let time = new Date(`${startYear}-01-01T00:00:00`).getTime() / 1000;
   const totalHours = 2 * 365 * 24;
 
-  // Base rate: ~$0.12/kWh = $0.00012/Wh = 12 micro-dollars per Wh
-  // With powerOfTenMultiplier=-3, values are in mWh, so we need to adjust
-  const BASE_RATE = 12; // micro-dollars per Wh (before multiplier adjustment)
+  const BASE_RATE = 12; // micro-dollars per Wh
+
+  // State for correlated noise (brownian motion)
+  let noiseState = 0;
+  let weatherState = 0; // Multi-day weather patterns
+  let lastValue = 400;
+
+  // Simplex-like smooth noise
+  const smoothNoise = (seed: number, scale: number = 1): number => {
+    const x = Math.sin(seed * 12.9898 + seed * 78.233) * 43758.5453;
+    return ((x - Math.floor(x)) - 0.5) * 2 * scale;
+  };
+
+
+  // Daily usage curve - smooth sine-based pattern
+  const getDailyProfile = (hour: number, minute: number = 0): number => {
+    const t = hour + minute / 60;
+    
+    // Base load (always-on appliances)
+    let usage = 250;
+    
+    // Morning ramp (6am-9am) - smooth gaussian-like curve
+    const morningPeak = Math.exp(-Math.pow(t - 7.5, 2) / 2) * 500;
+    usage += morningPeak;
+    
+    // Daytime baseline (slightly elevated, people might be home)
+    if (t >= 8 && t <= 17) {
+      const dayPhase = (t - 8) / 9;
+      usage += 200 + Math.sin(dayPhase * Math.PI) * 100;
+    }
+    
+    // Evening peak (5pm-10pm) - the big one
+    const eveningPeak = Math.exp(-Math.pow(t - 19, 2) / 3) * 900;
+    usage += eveningPeak;
+    
+    // Late night decline
+    const nightDip = Math.exp(-Math.pow(t - 3, 2) / 8) * -150;
+    usage += nightDip;
+    
+    return Math.max(150, usage);
+  };
+
+  // Seasonal multiplier with smooth transitions
+  const getSeasonalFactor = (dayOfYear: number): number => {
+    // Use sine wave for smooth seasonal variation
+    // Peak in summer (day ~180), trough in spring/fall
+    const summerHeat = Math.sin((dayOfYear - 80) * Math.PI / 182.5);
+    const winterHeat = Math.cos((dayOfYear) * Math.PI / 182.5);
+    
+    // Summer AC load (peaks in July/August)
+    const summerLoad = Math.max(0, summerHeat) * 0.5;
+    
+    // Winter heating load (peaks in January)
+    const winterLoad = Math.max(0, winterHeat) * 0.25;
+    
+    return 1.0 + summerLoad + winterLoad;
+  };
+
+  // Time-of-use rate with smooth transitions
+  const getTOURate = (hour: number): number => {
+    // Smooth transition into peak hours
+    const peakCenter = 16.5; // 4:30pm
+    const peakWidth = 2.5;
+    const peakFactor = Math.exp(-Math.pow(hour - peakCenter, 2) / (2 * peakWidth * peakWidth));
+    
+    // Off-peak overnight
+    const offPeakFactor = hour < 6 || hour >= 22 ? 0.7 : 1.0;
+    
+    return offPeakFactor + peakFactor * 0.5;
+  };
 
   for (let i = 0; i < totalHours; i++) {
     const currentDate = new Date(time * 1000);
-    const month = currentDate.getMonth();
     const hour = currentDate.getHours();
     const dayOfWeek = currentDate.getDay();
+    const dayOfYear = Math.floor((currentDate.getTime() - new Date(currentDate.getFullYear(), 0, 0).getTime()) / 86400000);
 
-    // Seasonal factor
-    let seasonalFactor = 1.0;
-    if (month >= 5 && month <= 8) {
-      seasonalFactor = 1.5 + (Math.random() * 0.4);
-    } else if (month === 11 || month === 0 || month === 1) {
-      seasonalFactor = 1.2 + (Math.random() * 0.2);
-    } else {
-      seasonalFactor = 0.8 + (Math.random() * 0.2);
+    // Update weather state every ~6 hours (creates multi-day patterns)
+    if (i % 6 === 0) {
+      weatherState += smoothNoise(i * 0.01, 0.1);
+      weatherState = Math.max(-1, Math.min(1, weatherState * 0.95)); // Mean reversion
     }
 
-    // Day of week factor
-    let dayFactor = 1.0;
-    if (dayOfWeek === 5 || dayOfWeek === 6) {
-      dayFactor = 1.25;
+    // Get base daily profile
+    let baseUsage = getDailyProfile(hour);
+
+    // Seasonal adjustment
+    const seasonalFactor = getSeasonalFactor(dayOfYear);
+    baseUsage *= seasonalFactor;
+
+    // Weather variation (hot/cold spells increase usage)
+    const weatherMult = 1 + Math.abs(weatherState) * 0.3;
+    baseUsage *= weatherMult;
+
+    // Weekend adjustment (more home time = different pattern)
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // Shift morning peak later, increase daytime usage
+      const weekendShift = hour >= 8 && hour <= 14 ? 1.2 : 1.0;
+      baseUsage *= weekendShift;
     }
 
-    // Hourly profile
-    let hourlyBase = 300;
-    if (hour >= 6 && hour < 9) {
-      hourlyBase = 800;
-    } else if (hour >= 9 && hour < 17) {
-      hourlyBase = 1000;
-    } else if (hour >= 17 && hour < 22) {
-      hourlyBase = 1600;
-    } else if (hour >= 22) {
-      hourlyBase = 500;
-    }
-
-    // Time-of-use rate multiplier (peak hours cost more)
-    let rateMult = 1.0;
-    if (hour >= 14 && hour < 19) {
-      rateMult = 1.5; // Peak hours: 2pm-7pm
-    } else if (hour >= 22 || hour < 6) {
-      rateMult = 0.7; // Off-peak: 10pm-6am
-    }
-
-    const noise = Math.random() * 200 - 100;
-    const finalValue = Math.max(0, Math.floor((hourlyBase * seasonalFactor * dayFactor) + noise));
+    // Correlated noise (brownian motion for natural variation)
+    noiseState += smoothNoise(i, 30);
+    noiseState *= 0.92; // Mean reversion
     
-    // Cost = value * base_rate * TOU_multiplier (in micro-dollars)
-    const finalCost = Math.floor(finalValue * BASE_RATE * rateMult);
+    // Add some texture noise
+    const textureNoise = smoothNoise(i * 0.5, 50) + smoothNoise(i * 2, 20);
+
+    // Occasional appliance spikes (laundry, oven, etc.)
+    let applianceSpike = 0;
+    const spikeChance = Math.random();
+    if (spikeChance > 0.97 && hour >= 9 && hour <= 21) {
+      // ~3% chance of appliance use during waking hours
+      applianceSpike = 300 + Math.random() * 500;
+    }
+
+    // Combine everything with smoothing toward previous value
+    let finalValue = baseUsage + noiseState + textureNoise + applianceSpike;
+    
+    // Smooth transitions (values don't jump dramatically hour to hour)
+    finalValue = lastValue * 0.3 + finalValue * 0.7;
+    finalValue = Math.max(100, Math.floor(finalValue));
+    lastValue = finalValue;
+
+    // Cost calculation with TOU rates
+    const touRate = getTOURate(hour);
+    const finalCost = Math.floor(finalValue * BASE_RATE * touRate);
 
     points.push({
       timestamp: time,
@@ -217,6 +293,7 @@ export const generateSampleData = (): DataPoint[] => {
 
     time += 3600;
   }
+  
   return points;
 };
 
