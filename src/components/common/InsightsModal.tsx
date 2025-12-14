@@ -44,7 +44,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
     icon: <Sun className="w-4 h-4" />,
     category: 'timing',
     filters: { daysOfWeek: [], months: [], hourStart: 6, hourEnd: 9 },
-    groupBy: 'hour',
+    groupBy: 'dayOfWeek',
     analysisView: 'timeline',
     metricMode: 'cost',
   },
