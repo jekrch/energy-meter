@@ -34,7 +34,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
     icon: <Moon className="w-4 h-4" />,
     category: 'timing',
     filters: { daysOfWeek: [], months: [], hourStart: 0, hourEnd: 5 },
-    groupBy: 'hour',
+    groupBy: 'dayOfWeek',
     analysisView: 'averages',
   },
   {
@@ -45,7 +45,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
     category: 'timing',
     filters: { daysOfWeek: [], months: [], hourStart: 6, hourEnd: 9 },
     groupBy: 'dayOfWeek',
-    analysisView: 'timeline',
+    analysisView: 'averages',
     metricMode: 'cost',
   },
   {
@@ -106,7 +106,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
     icon: <Flame className="w-4 h-4" />,
     category: 'seasonal',
     filters: { daysOfWeek: [], months: [5, 6, 7], hourStart: 0, hourEnd: 23 },
-    groupBy: 'hour',
+    groupBy: 'dayOfWeek',
     analysisView: 'averages',
   },
   {
@@ -116,7 +116,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
     icon: <Snowflake className="w-4 h-4" />,
     category: 'seasonal',
     filters: { daysOfWeek: [], months: [11, 0, 1], hourStart: 0, hourEnd: 23 },
-    groupBy: 'hour',
+    groupBy: 'dayOfWeek',
     analysisView: 'averages',
   },
 ];
