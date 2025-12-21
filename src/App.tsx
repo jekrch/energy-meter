@@ -23,6 +23,7 @@ import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
 import { WeatherSettings } from './components/common/WeatherSettings';
 import { InsightsModal, type InsightPreset } from './components/common/InsightsModal';
+import { RateChangesCard } from './components/dashboard/RateChangesCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 
@@ -39,7 +40,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
-  const [metricMode, setMetricMode] = useState<MetricMode>('energy');
+  const [metricMode, setMetricMode] = useState<MetricMode>('cost');
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
   // Time State
@@ -234,7 +235,6 @@ export default function App() {
   const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
   const handleChartSelection = (range: { start: number; end: number }) => { setViewRange({ start: range.start, end: range.end }); setPage(1); };
 
-  // Insight selection handler - switches to analysis tab and applies preset
   const handleSelectInsight = useCallback((preset: InsightPreset) => {
     setActiveTab('analysis');
     setAnalysisFilters({
@@ -250,7 +250,6 @@ export default function App() {
     }
   }, [setAnalysisFilters]);
 
-  // Helper: show chart/analysis controls
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
 
   return (
@@ -290,7 +289,6 @@ export default function App() {
 
                 <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
 
-                {/* Explore Insights Card */}
                 <InsightsModal onSelectInsight={handleSelectInsight}>
                   {(openModal) => (
                     <button
@@ -318,18 +316,14 @@ export default function App() {
                 </InsightsModal>
 
                 <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
-                  {/* Header Controls - Reorganized */}
                   <div className="border-b border-slate-800 px-3 md:px-4 py-3 space-y-2">
-                    {/* Row 1: Tabs + Status (always visible) */}
                     <div className="flex items-center justify-between gap-3">
-                      {/* Tab Buttons */}
                       <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                         <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
                         <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
                         <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                       </div>
 
-                      {/* Status Chip - Right aligned */}
                       <div className="text-[11px] text-slate-500">
                         {activeTab === 'chart' && <StatusChip loading={isProcessing} count={chartData.length} />}
                         {activeTab === 'analysis' && <StatusChip loading={analysisProcessing} count={0} label={groupBy === 'hour' ? '24h' : groupBy === 'dayOfWeek' ? '7d' : '12mo'} />}
@@ -337,10 +331,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Row 2: View Options (chart/analysis tabs only) */}
                     {showChartControls && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Metric Toggle */}
                         <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                           <button
                             onClick={() => setMetricMode('energy')}
@@ -366,7 +358,6 @@ export default function App() {
                           </button>
                         </div>
 
-                        {/* Energy Unit Selector (only when metric=energy) */}
                         {metricMode === 'energy' && (
                           <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                             {ENERGY_UNITS.map(({ value, label }) => (
@@ -385,7 +376,6 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* Resolution Selector (chart tab only) */}
                         {activeTab === 'chart' && (
                           <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                             {Object.keys(RESOLUTIONS).map((key) => (
@@ -404,10 +394,8 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* Spacer */}
                         <div className="flex-1 min-w-0" />
 
-                        {/* Weather Controls Group */}
                         <div className="flex items-center gap-1.5">
                           <WeatherSettings
                             enabled={weather.enabled}
@@ -420,7 +408,6 @@ export default function App() {
                             onClear={weather.clearLocation}
                           />
 
-                          {/* Temperature Unit Toggle (only when weather enabled) */}
                           {weather.enabled && weather.location && (
                             <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                               <button
@@ -450,7 +437,6 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Content Area */}
                   <div className="flex-1 relative min-h-[300px]">
                     {activeTab === 'chart' && (
                       <>
@@ -491,6 +477,9 @@ export default function App() {
                     )}
                   </div>
                 </div>
+
+                {/* Rate Changes Card */}
+                <RateChangesCard data={viewData} tolerancePercent={8} />
               </div>
             )
           )}

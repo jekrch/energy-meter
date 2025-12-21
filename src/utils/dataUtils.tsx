@@ -1,5 +1,5 @@
 import type { BrushDataPoint } from '../components/common/RangeBrush';
-import { type DataPoint, RESOLUTIONS } from '../types';
+import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
 
 const CHUNK_SIZE = 2000;
@@ -126,16 +126,16 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
     if (!readings.length) throw new Error("No IntervalReading data found.");
 
     return readings.map((r) => {
-      const valueNode = r.getElementsByTagName("value")[0] || 
-                        r.getElementsByTagNameNS("*", "value")[0];
-      const costNode = r.getElementsByTagName("cost")[0] || 
-                       r.getElementsByTagNameNS("*", "cost")[0];
-      const timePeriod = r.getElementsByTagName("timePeriod")[0] || 
-                         r.getElementsByTagNameNS("*", "timePeriod")[0];
-      const startNode = timePeriod?.getElementsByTagName("start")[0] || 
-                        timePeriod?.getElementsByTagNameNS("*", "start")[0];
-      const durationNode = timePeriod?.getElementsByTagName("duration")[0] || 
-                           timePeriod?.getElementsByTagNameNS("*", "duration")[0];
+      const valueNode = r.getElementsByTagName("value")[0] ||
+        r.getElementsByTagNameNS("*", "value")[0];
+      const costNode = r.getElementsByTagName("cost")[0] ||
+        r.getElementsByTagNameNS("*", "cost")[0];
+      const timePeriod = r.getElementsByTagName("timePeriod")[0] ||
+        r.getElementsByTagNameNS("*", "timePeriod")[0];
+      const startNode = timePeriod?.getElementsByTagName("start")[0] ||
+        timePeriod?.getElementsByTagNameNS("*", "start")[0];
+      const durationNode = timePeriod?.getElementsByTagName("duration")[0] ||
+        timePeriod?.getElementsByTagNameNS("*", "duration")[0];
 
       return {
         timestamp: startNode?.textContent ? parseInt(startNode.textContent, 10) : 0,
@@ -174,28 +174,28 @@ export const generateSampleData = (): DataPoint[] => {
   // Daily usage curve - smooth sine-based pattern
   const getDailyProfile = (hour: number, minute: number = 0): number => {
     const t = hour + minute / 60;
-    
+
     // Base load (always-on appliances)
     let usage = 250;
-    
+
     // Morning ramp (6am-9am) - smooth gaussian-like curve
     const morningPeak = Math.exp(-Math.pow(t - 7.5, 2) / 2) * 500;
     usage += morningPeak;
-    
+
     // Daytime baseline (slightly elevated, people might be home)
     if (t >= 8 && t <= 17) {
       const dayPhase = (t - 8) / 9;
       usage += 200 + Math.sin(dayPhase * Math.PI) * 100;
     }
-    
+
     // Evening peak (5pm-10pm) - the big one
     const eveningPeak = Math.exp(-Math.pow(t - 19, 2) / 3) * 900;
     usage += eveningPeak;
-    
+
     // Late night decline
     const nightDip = Math.exp(-Math.pow(t - 3, 2) / 8) * -150;
     usage += nightDip;
-    
+
     return Math.max(150, usage);
   };
 
@@ -205,13 +205,13 @@ export const generateSampleData = (): DataPoint[] => {
     // Peak in summer (day ~180), trough in spring/fall
     const summerHeat = Math.sin((dayOfYear - 80) * Math.PI / 182.5);
     const winterHeat = Math.cos((dayOfYear) * Math.PI / 182.5);
-    
+
     // Summer AC load (peaks in July/August)
     const summerLoad = Math.max(0, summerHeat) * 0.5;
-    
+
     // Winter heating load (peaks in January)
     const winterLoad = Math.max(0, winterHeat) * 0.25;
-    
+
     return 1.0 + summerLoad + winterLoad;
   };
 
@@ -221,10 +221,10 @@ export const generateSampleData = (): DataPoint[] => {
     const peakCenter = 16.5; // 4:30pm
     const peakWidth = 2.5;
     const peakFactor = Math.exp(-Math.pow(hour - peakCenter, 2) / (2 * peakWidth * peakWidth));
-    
+
     // Off-peak overnight
     const offPeakFactor = hour < 6 || hour >= 22 ? 0.7 : 1.0;
-    
+
     return offPeakFactor + peakFactor * 0.5;
   };
 
@@ -261,7 +261,7 @@ export const generateSampleData = (): DataPoint[] => {
     // Correlated noise (brownian motion for natural variation)
     noiseState += smoothNoise(i, 30);
     noiseState *= 0.92; // Mean reversion
-    
+
     // Add some texture noise
     const textureNoise = smoothNoise(i * 0.5, 50) + smoothNoise(i * 2, 20);
 
@@ -275,7 +275,7 @@ export const generateSampleData = (): DataPoint[] => {
 
     // Combine everything with smoothing toward previous value
     let finalValue = baseUsage + noiseState + textureNoise + applianceSpike;
-    
+
     // Smooth transitions (values don't jump dramatically hour to hour)
     finalValue = lastValue * 0.3 + finalValue * 0.7;
     finalValue = Math.max(100, Math.floor(finalValue));
@@ -293,7 +293,7 @@ export const generateSampleData = (): DataPoint[] => {
 
     time += 3600;
   }
-  
+
   return points;
 };
 
@@ -302,44 +302,137 @@ export const generateSampleData = (): DataPoint[] => {
  * Uses peak-preserving sampling to maintain visual accuracy.
  */
 export function createBrushData(data: DataPoint[], maxPoints: number = 200): BrushDataPoint[] {
-    if (!data.length) return [];
-    
-    if (data.length <= maxPoints) {
-        return data.map(d => ({ timestamp: d.timestamp, value: d.value }));
+  if (!data.length) return [];
+
+  if (data.length <= maxPoints) {
+    return data.map(d => ({ timestamp: d.timestamp, value: d.value }));
+  }
+
+  const result: BrushDataPoint[] = [];
+  const step = data.length / maxPoints;
+
+  for (let i = 0; i < maxPoints; i++) {
+    const startIdx = Math.floor(i * step);
+    const endIdx = Math.floor((i + 1) * step);
+
+    // Find max value in this bucket for peak visibility
+    let maxVal = data[startIdx].value;
+    let maxIdx = startIdx;
+
+    for (let j = startIdx; j < endIdx && j < data.length; j++) {
+      if (data[j].value > maxVal) {
+        maxVal = data[j].value;
+        maxIdx = j;
+      }
     }
-    
-    const result: BrushDataPoint[] = [];
-    const step = data.length / maxPoints;
-    
-    for (let i = 0; i < maxPoints; i++) {
-        const startIdx = Math.floor(i * step);
-        const endIdx = Math.floor((i + 1) * step);
-        
-        // Find max value in this bucket for peak visibility
-        let maxVal = data[startIdx].value;
-        let maxIdx = startIdx;
-        
-        for (let j = startIdx; j < endIdx && j < data.length; j++) {
-            if (data[j].value > maxVal) {
-                maxVal = data[j].value;
-                maxIdx = j;
-            }
-        }
-        
-        result.push({ 
-            timestamp: data[maxIdx].timestamp, 
-            value: maxVal 
-        });
-    }
-    
-    // Ensure first and last points match exactly
-    if (result.length > 0) {
-        result[0] = { timestamp: data[0].timestamp, value: data[0].value };
-        result[result.length - 1] = { 
-            timestamp: data[data.length - 1].timestamp, 
-            value: data[data.length - 1].value 
-        };
-    }
-    
-    return result;
+
+    result.push({
+      timestamp: data[maxIdx].timestamp,
+      value: maxVal
+    });
+  }
+
+  // Ensure first and last points match exactly
+  if (result.length > 0) {
+    result[0] = { timestamp: data[0].timestamp, value: data[0].value };
+    result[result.length - 1] = {
+      timestamp: data[data.length - 1].timestamp,
+      value: data[data.length - 1].value
+    };
+  }
+
+  return result;
 }
+
+/**
+ * Detects significant rate changes in energy data.
+ * Groups consecutive readings with similar rates into periods.
+ */
+export const detectRateChanges = (
+  data: DataPoint[],
+  tolerancePercent: number = 8
+): { changes: RateChange[]; periods: RatePeriod[] } => {
+  const changes: RateChange[] = [];
+  const periods: RatePeriod[] = [];
+  
+  if (data.length < 2) return { changes, periods };
+
+  // Calculate rates, filtering out low-value readings
+  const ratedPoints = data
+    .filter(p => p.value >= 50 && p.cost > 0)
+    .map(p => ({
+      timestamp: p.timestamp,
+      rate: p.cost / p.value
+    }));
+
+  if (ratedPoints.length < 2) return { changes, periods };
+
+  let currentPeriod: RatePeriod = {
+    startTimestamp: ratedPoints[0].timestamp,
+    endTimestamp: ratedPoints[0].timestamp,
+    rate: ratedPoints[0].rate,
+    readings: 1
+  };
+
+  // Use a rolling median to smooth out noise
+  const windowSize = 3;
+  const getSmoothedRate = (idx: number): number => {
+    const start = Math.max(0, idx - Math.floor(windowSize / 2));
+    const end = Math.min(ratedPoints.length, idx + Math.ceil(windowSize / 2));
+    const rates = ratedPoints.slice(start, end).map(p => p.rate).sort((a, b) => a - b);
+    return rates[Math.floor(rates.length / 2)];
+  };
+
+  let lastSignificantRate = getSmoothedRate(0);
+
+  for (let i = 1; i < ratedPoints.length; i++) {
+    const smoothedRate = getSmoothedRate(i);
+    const percentChange = ((smoothedRate - lastSignificantRate) / lastSignificantRate) * 100;
+
+    if (Math.abs(percentChange) > tolerancePercent) {
+      // Close current period
+      periods.push({ ...currentPeriod });
+
+      // Record the change
+      changes.push({
+        timestamp: ratedPoints[i].timestamp,
+        previousRate: lastSignificantRate,
+        newRate: smoothedRate,
+        percentChange,
+        direction: percentChange > 0 ? 'increase' : 'decrease'
+      });
+
+      // Start new period
+      currentPeriod = {
+        startTimestamp: ratedPoints[i].timestamp,
+        endTimestamp: ratedPoints[i].timestamp,
+        rate: smoothedRate,
+        readings: 1
+      };
+
+      lastSignificantRate = smoothedRate;
+    } else {
+      // Extend current period
+      currentPeriod.endTimestamp = ratedPoints[i].timestamp;
+      currentPeriod.readings++;
+    }
+  }
+
+  // Close final period
+  periods.push({ ...currentPeriod });
+
+  return { changes, periods };
+};
+
+// Convert rate (cents/Wh) to $/kWh for display
+// rate = cost/value where cost is in cents and value is in Wh
+// To get $/kWh: rate * 1000 (Wh→kWh) / 100 (cents→$) = rate * 10
+export const formatRate = (rate: number): string => {
+  const dollarsPerKwh = rate * 10;
+  
+  if (!isFinite(dollarsPerKwh) || dollarsPerKwh === 0) return '$0.00/kWh';
+  if (dollarsPerKwh < 0.01) return `${dollarsPerKwh.toFixed(4)}/kWh`;
+  if (dollarsPerKwh < 1) return `${dollarsPerKwh.toFixed(3)}/kWh`;
+  return `${dollarsPerKwh.toFixed(2)}/kWh`;
+};
+

@@ -2,6 +2,20 @@ export const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+export interface RateChange {
+  timestamp: number;
+  previousRate: number;  // micro-dollars per Wh
+  newRate: number;
+  percentChange: number;
+  direction: 'increase' | 'decrease';
+}
+
+export interface RatePeriod {
+  startTimestamp: number;
+  endTimestamp: number;
+  rate: number;  // micro-dollars per Wh
+  readings: number;
+}
 
 export interface DataPoint {
   timestamp: number;
