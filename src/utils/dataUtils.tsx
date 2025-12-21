@@ -150,14 +150,23 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
   }
 };
 
-// Mock Data Generator - realistic energy patterns with smooth curves
+// Mock Data Generator - realistic energy patterns with stepped rate increases
 export const generateSampleData = (): DataPoint[] => {
   const points: DataPoint[] = [];
   const startYear = new Date().getFullYear() - 1;
   let time = new Date(`${startYear}-01-01T00:00:00`).getTime() / 1000;
   const totalHours = 2 * 365 * 24;
 
-  const BASE_RATE = 12; // micro-dollars per Wh
+  const BASE_RATE = 12; // tenths of cents (mills) per Wh
+
+  // Rate change points (as fraction of total duration)
+  const firstChangePoint = Math.floor(totalHours * 0.35);  // ~4.5 months in
+  const secondChangePoint = Math.floor(totalHours * 0.70); // ~9 months in
+
+  // Rate multipliers: base → +4% → +5% (compounded)
+  const rate1 = BASE_RATE;
+  const rate2 = BASE_RATE * 1.04;           // 4% increase
+  const rate3 = BASE_RATE * 1.04 * 1.05;    // Additional 5% increase
 
   // State for correlated noise (brownian motion)
   let noiseState = 0;
@@ -170,10 +179,9 @@ export const generateSampleData = (): DataPoint[] => {
     return ((x - Math.floor(x)) - 0.5) * 2 * scale;
   };
 
-
   // Daily usage curve - smooth sine-based pattern
-  const getDailyProfile = (hour: number, minute: number = 0): number => {
-    const t = hour + minute / 60;
+  const getDailyProfile = (hour: number): number => {
+    const t = hour;
 
     // Base load (always-on appliances)
     let usage = 250;
@@ -215,17 +223,11 @@ export const generateSampleData = (): DataPoint[] => {
     return 1.0 + summerLoad + winterLoad;
   };
 
-  // Time-of-use rate with smooth transitions
-  const getTOURate = (hour: number): number => {
-    // Smooth transition into peak hours
-    const peakCenter = 16.5; // 4:30pm
-    const peakWidth = 2.5;
-    const peakFactor = Math.exp(-Math.pow(hour - peakCenter, 2) / (2 * peakWidth * peakWidth));
-
-    // Off-peak overnight
-    const offPeakFactor = hour < 6 || hour >= 22 ? 0.7 : 1.0;
-
-    return offPeakFactor + peakFactor * 0.5;
+  // Get the current rate based on position in data
+  const getCurrentRate = (hourIndex: number): number => {
+    if (hourIndex < firstChangePoint) return rate1;
+    if (hourIndex < secondChangePoint) return rate2;
+    return rate3;
   };
 
   for (let i = 0; i < totalHours; i++) {
@@ -267,8 +269,7 @@ export const generateSampleData = (): DataPoint[] => {
 
     // Occasional appliance spikes (laundry, oven, etc.)
     let applianceSpike = 0;
-    const spikeChance = Math.random();
-    if (spikeChance > 0.97 && hour >= 9 && hour <= 21) {
+    if (Math.random() > 0.97 && hour >= 9 && hour <= 21) {
       // ~3% chance of appliance use during waking hours
       applianceSpike = 300 + Math.random() * 500;
     }
@@ -281,9 +282,9 @@ export const generateSampleData = (): DataPoint[] => {
     finalValue = Math.max(100, Math.floor(finalValue));
     lastValue = finalValue;
 
-    // Cost calculation with TOU rates
-    const touRate = getTOURate(hour);
-    const finalCost = Math.floor(finalValue * BASE_RATE * touRate);
+    // Cost calculation with stepped rates
+    const currentRate = getCurrentRate(i);
+    const finalCost = Math.floor(finalValue * currentRate);
 
     points.push({
       timestamp: time,
@@ -315,7 +316,6 @@ export function createBrushData(data: DataPoint[], maxPoints: number = 200): Bru
     const startIdx = Math.floor(i * step);
     const endIdx = Math.floor((i + 1) * step);
 
-    // Find max value in this bucket for peak visibility
     let maxVal = data[startIdx].value;
     let maxIdx = startIdx;
 
@@ -332,7 +332,6 @@ export function createBrushData(data: DataPoint[], maxPoints: number = 200): Bru
     });
   }
 
-  // Ensure first and last points match exactly
   if (result.length > 0) {
     result[0] = { timestamp: data[0].timestamp, value: data[0].value };
     result[result.length - 1] = {
@@ -354,10 +353,9 @@ export const detectRateChanges = (
 ): { changes: RateChange[]; periods: RatePeriod[] } => {
   const changes: RateChange[] = [];
   const periods: RatePeriod[] = [];
-  
+
   if (data.length < 2) return { changes, periods };
 
-  // Calculate rates, filtering out low-value readings
   const ratedPoints = data
     .filter(p => p.value >= 50 && p.cost > 0)
     .map(p => ({
@@ -374,7 +372,6 @@ export const detectRateChanges = (
     readings: 1
   };
 
-  // Use a rolling median to smooth out noise
   const windowSize = 3;
   const getSmoothedRate = (idx: number): number => {
     const start = Math.max(0, idx - Math.floor(windowSize / 2));
@@ -390,10 +387,8 @@ export const detectRateChanges = (
     const percentChange = ((smoothedRate - lastSignificantRate) / lastSignificantRate) * 100;
 
     if (Math.abs(percentChange) > tolerancePercent) {
-      // Close current period
       periods.push({ ...currentPeriod });
 
-      // Record the change
       changes.push({
         timestamp: ratedPoints[i].timestamp,
         previousRate: lastSignificantRate,
@@ -402,7 +397,6 @@ export const detectRateChanges = (
         direction: percentChange > 0 ? 'increase' : 'decrease'
       });
 
-      // Start new period
       currentPeriod = {
         startTimestamp: ratedPoints[i].timestamp,
         endTimestamp: ratedPoints[i].timestamp,
@@ -412,27 +406,24 @@ export const detectRateChanges = (
 
       lastSignificantRate = smoothedRate;
     } else {
-      // Extend current period
       currentPeriod.endTimestamp = ratedPoints[i].timestamp;
       currentPeriod.readings++;
     }
   }
 
-  // Close final period
   periods.push({ ...currentPeriod });
 
   return { changes, periods };
 };
 
-// Convert rate (cents/Wh) to $/kWh for display
-// rate = cost/value where cost is in cents and value is in Wh
-// To get $/kWh: rate * 1000 (Wh→kWh) / 100 (cents→$) = rate * 10
+// Convert rate to $/kWh for display
+// rate = cost/value where cost is in tenths of cents (mills) and value is in Wh
+// To get $/kWh: rate * 1000 (Wh→kWh) / 1000 (mills→$) = rate
 export const formatRate = (rate: number): string => {
-  const dollarsPerKwh = rate * 10;
-  
+  const dollarsPerKwh = rate / 100;
+
   if (!isFinite(dollarsPerKwh) || dollarsPerKwh === 0) return '$0.00/kWh';
   if (dollarsPerKwh < 0.01) return `${dollarsPerKwh.toFixed(4)}/kWh`;
   if (dollarsPerKwh < 1) return `${dollarsPerKwh.toFixed(3)}/kWh`;
   return `${dollarsPerKwh.toFixed(2)}/kWh`;
 };
-

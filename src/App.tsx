@@ -79,10 +79,10 @@ export default function App() {
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
 
-  const { 
-    filters: analysisFilters, 
-    setFilters: setAnalysisFilters, 
-    results: analysisResults, 
+  const {
+    filters: analysisFilters,
+    setFilters: setAnalysisFilters,
+    results: analysisResults,
     isProcessing: analysisProcessing,
     isDataSampled,
     sampledCount,
@@ -334,28 +334,28 @@ export default function App() {
                     {showChartControls && (
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-                          <button
-                            onClick={() => setMetricMode('energy')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                              metricMode === 'energy'
-                                ? 'bg-amber-500/15 text-amber-400 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            <Zap className="w-3.5 h-3.5" />
-                            <span className="hidden xs:inline">Energy</span>
-                          </button>
+
                           <button
                             onClick={() => setMetricMode('cost')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                              metricMode === 'cost'
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${metricMode === 'cost'
                                 ? 'bg-emerald-500/15 text-emerald-400 shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200'
-                            }`}
+                              }`}
                           >
                             <DollarSign className="w-3.5 h-3.5" />
                             <span className="hidden xs:inline">Cost</span>
                           </button>
+                          <button
+                            onClick={() => setMetricMode('energy')}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${metricMode === 'energy'
+                                ? 'bg-amber-500/15 text-amber-400 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span className="hidden xs:inline">Energy</span>
+                          </button>
+
                         </div>
 
                         {metricMode === 'energy' && (
@@ -364,11 +364,10 @@ export default function App() {
                               <button
                                 key={value}
                                 onClick={() => setEnergyUnit(value)}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                  energyUnit === value
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${energyUnit === value
                                     ? 'bg-amber-500/15 text-amber-400 shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200'
-                                }`}
+                                  }`}
                               >
                                 {label}
                               </button>
@@ -382,11 +381,10 @@ export default function App() {
                               <button
                                 key={key}
                                 onClick={() => setResolution(key)}
-                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                  resolution === key
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${resolution === key
                                     ? 'bg-slate-700 text-emerald-400 shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200'
-                                }`}
+                                  }`}
                               >
                                 {RESOLUTIONS[key].label.split(' ')[0]}
                               </button>
@@ -412,21 +410,19 @@ export default function App() {
                             <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
                               <button
                                 onClick={() => setTemperatureUnit('F')}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                  temperatureUnit === 'F'
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${temperatureUnit === 'F'
                                     ? 'bg-sky-500/15 text-sky-400 shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200'
-                                }`}
+                                  }`}
                               >
                                 °F
                               </button>
                               <button
                                 onClick={() => setTemperatureUnit('C')}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                  temperatureUnit === 'C'
+                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${temperatureUnit === 'C'
                                     ? 'bg-sky-500/15 text-sky-400 shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200'
-                                }`}
+                                  }`}
                               >
                                 °C
                               </button>
@@ -447,27 +443,27 @@ export default function App() {
 
                     {activeTab === 'analysis' && (
                       <div className="min-h-[600px]">
-                        <AnalysisPanel 
-                          filters={analysisFilters} 
-                          setFilters={setAnalysisFilters} 
-                          groupBy={groupBy} 
-                          setGroupBy={setGroupBy} 
-                          analysisView={analysisView} 
-                          setAnalysisView={setAnalysisView} 
-                          results={analysisResults} 
-                          isProcessing={analysisProcessing} 
+                        <AnalysisPanel
+                          filters={analysisFilters}
+                          setFilters={setAnalysisFilters}
+                          groupBy={groupBy}
+                          setGroupBy={setGroupBy}
+                          analysisView={analysisView}
+                          setAnalysisView={setAnalysisView}
+                          results={analysisResults}
+                          isProcessing={analysisProcessing}
                           isDataSampled={isDataSampled}
                           sampledCount={sampledCount}
                           originalCount={originalCount}
-                          autoZoom={autoZoom} 
-                          setAutoZoom={setAutoZoom} 
-                          analysisDomain={analysisDomain} 
-                          metricMode={metricMode} 
-                          viewRange={viewRange} 
-                          energyUnit={energyUnit} 
-                          weatherData={analysisWeatherMap} 
-                          showWeather={weather.enabled} 
-                          temperatureUnit={temperatureUnit} 
+                          autoZoom={autoZoom}
+                          setAutoZoom={setAutoZoom}
+                          analysisDomain={analysisDomain}
+                          metricMode={metricMode}
+                          viewRange={viewRange}
+                          energyUnit={energyUnit}
+                          weatherData={analysisWeatherMap}
+                          showWeather={weather.enabled}
+                          temperatureUnit={temperatureUnit}
                         />
                       </div>
                     )}
