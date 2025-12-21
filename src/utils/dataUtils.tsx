@@ -157,7 +157,7 @@ export const generateSampleData = (): DataPoint[] => {
   let time = new Date(`${startYear}-01-01T00:00:00`).getTime() / 1000;
   const totalHours = 2 * 365 * 24;
 
-  const BASE_RATE = 12; // tenths of cents (mills) per Wh
+  const BASE_RATE = 0.012; // cents per Wh (~$0.12/kWh)
 
   // Rate change points (as fraction of total duration)
   const firstChangePoint = Math.floor(totalHours * 0.35);  // ~4.5 months in
@@ -283,8 +283,10 @@ export const generateSampleData = (): DataPoint[] => {
     lastValue = finalValue;
 
     // Cost calculation with stepped rates
+    // Note: We don't floor cost here to maintain exact rate ratios
+    // Real Green Button data has enough precision that this isn't an issue
     const currentRate = getCurrentRate(i);
-    const finalCost = Math.floor(finalValue * currentRate);
+    const finalCost = finalValue * currentRate;
 
     points.push({
       timestamp: time,
@@ -372,6 +374,7 @@ export const detectRateChanges = (
     readings: 1
   };
 
+  // Use a rolling median to smooth out noise
   const windowSize = 3;
   const getSmoothedRate = (idx: number): number => {
     const start = Math.max(0, idx - Math.floor(windowSize / 2));
@@ -416,11 +419,11 @@ export const detectRateChanges = (
   return { changes, periods };
 };
 
-// Convert rate to $/kWh for display
-// rate = cost/value where cost is in tenths of cents (mills) and value is in Wh
-// To get $/kWh: rate * 1000 (Wh→kWh) / 1000 (mills→$) = rate
+// Convert rate (cents/Wh) to $/kWh for display
+// rate = cost/value where cost is in cents and value is in Wh
+// To get $/kWh: rate * 1000 (Wh→kWh) / 100 (cents→$) = rate * 10
 export const formatRate = (rate: number): string => {
-  const dollarsPerKwh = rate / 100;
+  const dollarsPerKwh = rate * 10;
 
   if (!isFinite(dollarsPerKwh) || dollarsPerKwh === 0) return '$0.00/kWh';
   if (dollarsPerKwh < 0.01) return `${dollarsPerKwh.toFixed(4)}/kWh`;
