@@ -153,7 +153,8 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
 // Mock Data Generator - realistic energy patterns with stepped rate increases
 export const generateSampleData = (): DataPoint[] => {
   const points: DataPoint[] = [];
-  const startYear = new Date().getFullYear() - 1;
+  const now = Date.now() / 1000; // Current timestamp in seconds
+  const startYear = new Date().getFullYear() - 2;
   let time = new Date(`${startYear}-01-01T00:00:00`).getTime() / 1000;
   const totalHours = 2 * 365 * 24;
 
@@ -231,6 +232,9 @@ export const generateSampleData = (): DataPoint[] => {
   };
 
   for (let i = 0; i < totalHours; i++) {
+    // Stop if we've reached the present
+    if (time > now) break;
+
     const currentDate = new Date(time * 1000);
     const hour = currentDate.getHours();
     const dayOfWeek = currentDate.getDay();
@@ -283,8 +287,6 @@ export const generateSampleData = (): DataPoint[] => {
     lastValue = finalValue;
 
     // Cost calculation with stepped rates
-    // Note: We don't floor cost here to maintain exact rate ratios
-    // Real Green Button data has enough precision that this isn't an issue
     const currentRate = getCurrentRate(i);
     const finalCost = finalValue * currentRate;
 
