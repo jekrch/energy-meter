@@ -154,40 +154,18 @@ describe('processDataAsync', () => {
 });
 
 describe('parseGreenButtonXML', () => {
-  const validXML = `<?xml version="1.0" encoding="UTF-8"?>
-    <feed xmlns="http://www.w3.org/2005/Atom">
-      <entry>
-        <content>
-          <IntervalBlock>
-            <IntervalReading>
-              <timePeriod>
-                <start>1704067200</start>
-                <duration>3600</duration>
-              </timePeriod>
-              <value>1500</value>
-              <cost>180</cost>
-            </IntervalReading>
-            <IntervalReading>
-              <timePeriod>
-                <start>1704070800</start>
-                <duration>3600</duration>
-              </timePeriod>
-              <value>2000</value>
-              <cost>240</cost>
-            </IntervalReading>
-          </IntervalBlock>
-        </content>
-      </entry>
-    </feed>`;
+  const validXML = `TYPE,DATE,START TIME,END TIME,USAGE (kWh),NOTES
+Electric usage,2025-08-15,00:00,00:14,0.03
+Electric usage,2025-08-15,00:15,00:29,0.01`;
 
   it('parses valid Green Button XML', () => {
     const result = parseGreenButtonXML(validXML);
 
     expect(result.length).toBe(2);
-    expect(result[0].timestamp).toBe(1704067200);
-    expect(result[0].value).toBe(1500);
-    expect(result[0].cost).toBe(180);
-    expect(result[0].duration).toBe(3600);
+    expect(result[0].timestamp).toBe(1755216000);
+    expect(result[0].value).toBe(30);
+    expect(result[0].cost).toBe(0);
+    expect(result[0].duration).toBe(900);
   });
 
   it('sorts results by timestamp', () => {

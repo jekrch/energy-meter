@@ -110,44 +110,29 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
 
 // Green Button XML Parser
 export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
-  try {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText.trim(), "text/xml");
+    const lines = xmlText.trim().split("\n");
+    // Parse header
+    const headers = lines[0].split(",").map(h => h.trim());
 
-    if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
-      throw new Error("Invalid XML");
-    }
+    // Parse rows
+    const rows = lines.slice(1).map(line => {
+      const values = line.split(",");
+      return Object.fromEntries(
+        headers.map((h, i) => [h, values[i]?.trim()])
+      );
+    });
 
-    let readings = Array.from(xmlDoc.getElementsByTagName("IntervalReading"));
-    if (!readings.length) {
-      readings = Array.from(xmlDoc.getElementsByTagNameNS("*", "IntervalReading"));
-    }
+    return rows.map((v): DataPoint => {
+    const startUtc = `${v["DATE"]}T${v["START TIME"]}:00Z`;
+    const startDate = new Date(startUtc);
 
-    if (!readings.length) throw new Error("No IntervalReading data found.");
-
-    return readings.map((r) => {
-      const valueNode = r.getElementsByTagName("value")[0] ||
-        r.getElementsByTagNameNS("*", "value")[0];
-      const costNode = r.getElementsByTagName("cost")[0] ||
-        r.getElementsByTagNameNS("*", "cost")[0];
-      const timePeriod = r.getElementsByTagName("timePeriod")[0] ||
-        r.getElementsByTagNameNS("*", "timePeriod")[0];
-      const startNode = timePeriod?.getElementsByTagName("start")[0] ||
-        timePeriod?.getElementsByTagNameNS("*", "start")[0];
-      const durationNode = timePeriod?.getElementsByTagName("duration")[0] ||
-        timePeriod?.getElementsByTagNameNS("*", "duration")[0];
-
-      return {
-        timestamp: startNode?.textContent ? parseInt(startNode.textContent, 10) : 0,
-        value: valueNode?.textContent ? parseInt(valueNode.textContent, 10) : 0,
-        cost: costNode?.textContent ? parseInt(costNode.textContent, 10) : 0,
-        duration: durationNode?.textContent ? parseInt(durationNode.textContent, 10) : undefined
-      };
-    }).sort((a, b) => a.timestamp - b.timestamp);
-
-  } catch (err) {
-    throw new Error(err instanceof Error ? err.message : "XML Parsing Failed");
-  }
+    return {
+      timestamp: Math.floor(startDate.getTime() / 1000),
+      value: Number(v["USAGE (kWh)"]) * 1000,
+      cost: 0,
+      duration: 15 * 60, // fixed 15-minute interval
+    };
+  });
 };
 
 // Mock Data Generator - realistic energy patterns with stepped rate increases
