@@ -108,6 +108,12 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
   });
 };
 
+export const parseGreenButtonFile = (textData): DataPoint[] => {
+  // Determine if CSV or XML, then parse accordingly
+  const isXML = textData.startsWith('<?xml');
+  return isXML ? parseGreenButtonXML(textData) : parseGreenButtonCsv(textData);
+};
+
 // Green Button XML Parser
 export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
   try {
@@ -147,6 +153,68 @@ export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
 
   } catch (err) {
     throw new Error(err instanceof Error ? err.message : "XML Parsing Failed");
+  }
+};
+
+export const parseGreenButtonCsv = (csvText: string): DataPoint[] => {
+  try {
+    const lines = csvText.split(/\r?\n/);
+    const dataStartIdx = lines.findIndex(line => line.startsWith('Meter Number,Date'));
+
+    if (dataStartIdx === -1) {
+      throw new Error("Invalid CSV format: Data section not found.");
+    }
+
+    const dataLines = lines.slice(dataStartIdx + 1);
+    const result: DataPoint[] = [];
+
+    for (const line of dataLines) {
+      if (!line.trim()) continue;
+
+      // Handle CSV parsing: values can be quoted or not
+      // Simple regex to split by comma, ignoring commas inside quotes
+      const parts = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+
+      if (!parts || parts.length < 7) continue;
+
+      const [
+        _meterNumber,
+        rawDate,
+        rawTime,
+        rawDuration,
+        rawConsumption,
+        _rawGeneration,
+        rawNet
+      ] = parts.map(p => p.replace(/^"|"$/g, ''));
+
+      // Date format: M/D/YYYY (e.g., 2/1/2026)
+      // Time format: H:MM AM/PM (e.g., 12:00 AM)
+      const dateTimeStr = `${rawDate} ${rawTime}`;
+      const timestamp = Math.floor(new Date(dateTimeStr).getTime() / 1000);
+
+      if (isNaN(timestamp)) continue;
+
+      // Map consumption to value, net to cost (placeholder or as per requirement)
+      // Since Net seems to be energy in kWh, we'll use it for value if it's what's shown.
+      // Usually "Consumption" is what we want for usage.
+      // DataPoint expects 'value' which is usually Wh (based on XML parser using parseInt on XML values)
+      // In the CSV, values are like "0.0300" (kWh). 0.0300 kWh = 30 Wh.
+      
+      const value = Math.round(parseFloat(rawConsumption) * 1000);
+      const net = Math.round(parseFloat(rawNet) * 1000);
+      const duration = parseInt(rawDuration) * 60; // Minutes to seconds
+
+      result.push({
+        timestamp,
+        value: net,
+        cost: 0, // CSV doesn't seem to have cost in micro-dollars
+        duration
+      });
+    }
+
+    return result.sort((a, b) => a.timestamp - b.timestamp);
+  } catch (err) {
+    throw new Error(err instanceof Error ? err.message : "CSV Parsing Failed");
   }
 };
 

@@ -4,7 +4,7 @@ import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Doll
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
+import { processDataAsync, parseGreenButtonFile, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
 import { type EnergyUnit, ENERGY_UNITS, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { aggregateWeatherData } from './utils/weatherData';
 
@@ -212,7 +212,7 @@ export default function App() {
     setLoading(true); setError(null); setFileName(file.name); setPage(1);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try { const result = parseGreenButtonXML(ev.target?.result as string); setRawData(result); setResolution(result.length > 2000 ? 'DAILY' : 'RAW'); }
+      try { const result = parseGreenButtonFile(ev.target?.result as string); setRawData(result); setResolution(result.length > 2000 ? 'DAILY' : 'RAW'); }
       catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
       finally { setLoading(false); }
     };
