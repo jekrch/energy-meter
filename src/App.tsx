@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon } from 'lucide-react';
+import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
@@ -327,7 +328,20 @@ export default function App() {
                       <div className="text-[11px] text-slate-500">
                         {activeTab === 'chart' && <StatusChip loading={isProcessing} count={chartData.length} />}
                         {activeTab === 'analysis' && <StatusChip loading={analysisProcessing} count={0} label={groupBy === 'hour' ? '24h' : groupBy === 'dayOfWeek' ? '7d' : '12mo'} />}
-                        {activeTab === 'table' && <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />}
+                        {activeTab === 'table' && (
+                          <div className="flex items-center gap-2">
+                            <div className="hidden sm:block">
+                              <StatusChip loading={false} count={viewData.length} label={`${viewData.length.toLocaleString()} rows`} />
+                            </div>
+                            <ExportModal
+                              data={viewData}
+                              energyUnit={energyUnit}
+                              weatherAvailable={weather.enabled && weather.hourlyData.length > 0}
+                              hourlyWeatherData={weather.hourlyData}
+                              temperatureUnit={temperatureUnit}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
