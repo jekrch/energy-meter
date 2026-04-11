@@ -109,44 +109,254 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
 };
 
 // Green Button XML Parser
-export const parseGreenButtonXML = (xmlText: string): DataPoint[] => {
+//
+// A single Green Button download can contain multiple IntervalBlocks — for
+// example hourly + daily summary blocks, or consumption + generation for a
+// net-metered solar customer. If the parser naively sums all IntervalReading
+// elements, totals get double-counted. This parser keeps each IntervalBlock
+// separate and attaches the associated ReadingType metadata so the UI can
+// surface a picker when more than one block is present.
+
+// NAESB/ESPI code → label mappings (subset of the most common values).
+const FLOW_DIRECTION_LABELS: Record<number, string> = {
+  1: 'Forward (delivered)',
+  2: 'Lagging',
+  3: 'Leading',
+  4: 'Net',
+  5: 'Q1',
+  6: 'Q1+Q2',
+  7: 'Q1+Q3',
+  8: 'Q1+Q4',
+  9: 'Q2',
+  10: 'Q2+Q3',
+  11: 'Q2+Q4',
+  12: 'Q3',
+  13: 'Q3+Q4',
+  14: 'Q4',
+  15: 'Quadrantal',
+  16: 'Reverse',
+  17: 'Total',
+  18: 'Total by phase',
+  19: 'Reverse (received)',
+  20: 'Net',
+};
+
+const UOM_LABELS: Record<number, string> = {
+  5: 'A', 29: 'V', 31: 'J', 33: 'Hz', 38: 'W', 42: 'm³',
+  61: 'VA', 63: 'VAr', 65: 'cosθ', 67: 'V²', 69: 'A²',
+  71: 'VAh', 72: 'Wh', 73: 'VArh', 106: 'Ah', 119: 'ft³', 169: 'therms',
+};
+
+const COMMODITY_LABELS: Record<number, string> = {
+  1: 'Electricity (secondary)',
+  2: 'Electricity (primary)',
+  4: 'Air',
+  7: 'Natural gas',
+  9: 'Propane',
+  11: 'Water',
+  12: 'Steam',
+};
+
+export interface IntervalBlockMeta {
+  id: string;
+  flowDirection?: number;
+  flowDirectionLabel: string;
+  uom?: number;
+  uomLabel: string;
+  powerOfTenMultiplier: number;
+  commodity?: number;
+  commodityLabel: string;
+  currency?: number;
+  intervalLength?: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  readingCount: number;
+  totalValue: number;
+  totalCost: number;
+}
+
+export interface ParsedBlock {
+  meta: IntervalBlockMeta;
+  data: DataPoint[];
+}
+
+export interface ParsedGreenButton {
+  blocks: ParsedBlock[];
+}
+
+interface ReadingTypeMeta {
+  flowDirection?: number;
+  uom?: number;
+  powerOfTenMultiplier: number;
+  commodity?: number;
+  currency?: number;
+}
+
+const ns = (root: ParentNode, name: string): Element[] => {
+  const r = root as Element;
+  const byName = Array.from(r.getElementsByTagName(name));
+  if (byName.length) return byName;
+  return Array.from(r.getElementsByTagNameNS('*', name));
+};
+
+const firstNs = (root: ParentNode, name: string): Element | undefined => ns(root, name)[0];
+
+const parseIntNode = (el: Element | undefined): number | undefined => {
+  const t = el?.textContent;
+  if (!t) return undefined;
+  const n = parseInt(t.trim(), 10);
+  return Number.isNaN(n) ? undefined : n;
+};
+
+const parseReadingType = (rt: Element): ReadingTypeMeta => ({
+  flowDirection: parseIntNode(firstNs(rt, 'flowDirection')),
+  uom: parseIntNode(firstNs(rt, 'uom')),
+  powerOfTenMultiplier: parseIntNode(firstNs(rt, 'powerOfTenMultiplier')) ?? 0,
+  commodity: parseIntNode(firstNs(rt, 'commodity')),
+  currency: parseIntNode(firstNs(rt, 'currency')),
+});
+
+const readingsToBlock = (
+  readings: Element[],
+  rt: ReadingTypeMeta | undefined,
+  id: string
+): ParsedBlock => {
+  const multiplier = rt?.powerOfTenMultiplier ?? 0;
+  const scale = Math.pow(10, multiplier);
+
+  const data: DataPoint[] = readings.map((r) => {
+    const timePeriod = firstNs(r, 'timePeriod');
+    const startNode = timePeriod ? firstNs(timePeriod, 'start') : undefined;
+    const durationNode = timePeriod ? firstNs(timePeriod, 'duration') : undefined;
+    const valueNode = firstNs(r, 'value');
+    const costNode = firstNs(r, 'cost');
+
+    const rawValue = parseIntNode(valueNode) ?? 0;
+    return {
+      timestamp: parseIntNode(startNode) ?? 0,
+      value: scale === 1 ? rawValue : Math.round(rawValue * scale),
+      cost: parseIntNode(costNode) ?? 0,
+      duration: parseIntNode(durationNode),
+    };
+  }).sort((a, b) => a.timestamp - b.timestamp);
+
+  const first = data[0];
+  const last = data[data.length - 1];
+  let totalValue = 0;
+  let totalCost = 0;
+  for (const d of data) { totalValue += d.value; totalCost += d.cost; }
+
+  return {
+    meta: {
+      id,
+      flowDirection: rt?.flowDirection,
+      flowDirectionLabel: rt?.flowDirection !== undefined
+        ? (FLOW_DIRECTION_LABELS[rt.flowDirection] ?? `Flow ${rt.flowDirection}`)
+        : 'Unknown flow',
+      uom: rt?.uom,
+      uomLabel: rt?.uom !== undefined ? (UOM_LABELS[rt.uom] ?? `UOM ${rt.uom}`) : 'Wh',
+      powerOfTenMultiplier: multiplier,
+      commodity: rt?.commodity,
+      commodityLabel: rt?.commodity !== undefined
+        ? (COMMODITY_LABELS[rt.commodity] ?? `Commodity ${rt.commodity}`)
+        : 'Electricity',
+      currency: rt?.currency,
+      intervalLength: first?.duration,
+      startTimestamp: first?.timestamp ?? 0,
+      endTimestamp: last?.timestamp ?? 0,
+      readingCount: data.length,
+      totalValue,
+      totalCost,
+    },
+    data,
+  };
+};
+
+export const parseGreenButtonXML = (xmlText: string): ParsedGreenButton => {
   try {
     const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText.trim(), "text/xml");
+    const xmlDoc = parser.parseFromString(xmlText.trim(), 'text/xml');
 
-    if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
-      throw new Error("Invalid XML");
+    if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+      throw new Error('Invalid XML');
     }
 
-    let readings = Array.from(xmlDoc.getElementsByTagName("IntervalReading"));
-    if (!readings.length) {
-      readings = Array.from(xmlDoc.getElementsByTagNameNS("*", "IntervalReading"));
+    // First pass: walk atom <entry> elements and split ReadingTypes from
+    // IntervalBlocks. IntervalBlock entries reference their ReadingType via
+    // a <link rel="related"> pointing at the ReadingType entry's self href.
+    const readingTypes = new Map<string, ReadingTypeMeta>();
+    const rawBlocks: { ib: Element; relatedHrefs: string[] }[] = [];
+
+    const entries = ns(xmlDoc, 'entry');
+    for (const entry of entries) {
+      const links = ns(entry, 'link');
+      let selfHref: string | undefined;
+      const relatedHrefs: string[] = [];
+      for (const link of links) {
+        const rel = link.getAttribute('rel');
+        const href = link.getAttribute('href');
+        if (!href) continue;
+        if (rel === 'self') selfHref = href;
+        else if (rel === 'related') relatedHrefs.push(href);
+      }
+
+      const content = firstNs(entry, 'content');
+      if (!content) continue;
+
+      const rt = firstNs(content, 'ReadingType');
+      if (rt && selfHref) {
+        readingTypes.set(selfHref, parseReadingType(rt));
+        continue;
+      }
+
+      for (const ib of ns(content, 'IntervalBlock')) {
+        rawBlocks.push({ ib, relatedHrefs });
+      }
     }
 
-    if (!readings.length) throw new Error("No IntervalReading data found.");
+    // Fallback: some exports have IntervalBlocks outside of an entry wrapper.
+    if (rawBlocks.length === 0) {
+      for (const ib of ns(xmlDoc, 'IntervalBlock')) {
+        rawBlocks.push({ ib, relatedHrefs: [] });
+      }
+    }
 
-    return readings.map((r) => {
-      const valueNode = r.getElementsByTagName("value")[0] ||
-        r.getElementsByTagNameNS("*", "value")[0];
-      const costNode = r.getElementsByTagName("cost")[0] ||
-        r.getElementsByTagNameNS("*", "cost")[0];
-      const timePeriod = r.getElementsByTagName("timePeriod")[0] ||
-        r.getElementsByTagNameNS("*", "timePeriod")[0];
-      const startNode = timePeriod?.getElementsByTagName("start")[0] ||
-        timePeriod?.getElementsByTagNameNS("*", "start")[0];
-      const durationNode = timePeriod?.getElementsByTagName("duration")[0] ||
-        timePeriod?.getElementsByTagNameNS("*", "duration")[0];
+    // Final fallback: bare IntervalReadings with no block wrapper at all.
+    if (rawBlocks.length === 0) {
+      const readings = ns(xmlDoc, 'IntervalReading');
+      if (!readings.length) throw new Error('No IntervalReading data found.');
+      const soleRt = readingTypes.size === 1
+        ? readingTypes.values().next().value as ReadingTypeMeta
+        : undefined;
+      return { blocks: [readingsToBlock(readings, soleRt, 'block-0')] };
+    }
 
-      return {
-        timestamp: startNode?.textContent ? parseInt(startNode.textContent, 10) : 0,
-        value: valueNode?.textContent ? parseInt(valueNode.textContent, 10) : 0,
-        cost: costNode?.textContent ? parseInt(costNode.textContent, 10) : 0,
-        duration: durationNode?.textContent ? parseInt(durationNode.textContent, 10) : undefined
-      };
-    }).sort((a, b) => a.timestamp - b.timestamp);
+    const matchReadingType = (relatedHrefs: string[]): ReadingTypeMeta | undefined => {
+      for (const href of relatedHrefs) {
+        const direct = readingTypes.get(href);
+        if (direct) return direct;
+        for (const [key, meta] of readingTypes) {
+          if (href.includes(key) || key.includes(href)) return meta;
+        }
+      }
+      // If only one ReadingType exists in the file, assume it applies.
+      if (readingTypes.size === 1) return readingTypes.values().next().value as ReadingTypeMeta;
+      return undefined;
+    };
 
+    const blocks: ParsedBlock[] = [];
+    rawBlocks.forEach(({ ib, relatedHrefs }, idx) => {
+      const readings = ns(ib, 'IntervalReading');
+      if (!readings.length) return;
+      const rt = matchReadingType(relatedHrefs);
+      blocks.push(readingsToBlock(readings, rt, `block-${idx}`));
+    });
+
+    if (blocks.length === 0) throw new Error('No IntervalReading data found.');
+
+    return { blocks };
   } catch (err) {
-    throw new Error(err instanceof Error ? err.message : "XML Parsing Failed");
+    throw new Error(err instanceof Error ? err.message : 'XML Parsing Failed');
   }
 };
 

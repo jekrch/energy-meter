@@ -5,7 +5,7 @@ import { ExportModal } from './components/export/ExportModal';
 // Types and Utilities
 import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData } from './utils/dataUtils';
+import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData, type ParsedBlock } from './utils/dataUtils';
 import { type EnergyUnit, ENERGY_UNITS, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { aggregateWeatherData } from './utils/weatherData';
 
@@ -27,6 +27,7 @@ import { InsightsModal, type InsightPreset } from './components/common/InsightsM
 import { RateChangesCard } from './components/dashboard/RateChangesCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
+import { BlockPickerModal } from './components/common/BlockPickerModal';
 
 const ROWS_PER_PAGE = 50;
 const MAX_CHART_POINTS = 800;
@@ -36,6 +37,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [pendingBlocks, setPendingBlocks] = useState<ParsedBlock[] | null>(null);
 
   // UI State
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
@@ -207,17 +209,39 @@ export default function App() {
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
   // --- Handlers ---
+  const applyBlock = (block: ParsedBlock) => {
+    setRawData(block.data);
+    setResolution(block.data.length > 2000 ? 'DAILY' : 'RAW');
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true); setError(null); setFileName(file.name); setPage(1);
+    setPendingBlocks(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try { const result = parseGreenButtonXML(ev.target?.result as string); setRawData(result); setResolution(result.length > 2000 ? 'DAILY' : 'RAW'); }
+      try {
+        const { blocks } = parseGreenButtonXML(ev.target?.result as string);
+        if (blocks.length === 0) throw new Error('No IntervalReading data found.');
+        if (blocks.length === 1) applyBlock(blocks[0]);
+        else setPendingBlocks(blocks);
+      }
       catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
       finally { setLoading(false); }
     };
     reader.readAsText(file);
+  };
+
+  const handleSelectBlock = (idx: number) => {
+    if (!pendingBlocks) return;
+    applyBlock(pendingBlocks[idx]);
+    setPendingBlocks(null);
+  };
+
+  const handleCancelBlockPicker = () => {
+    setPendingBlocks(null);
+    setFileName(null);
   };
 
   const loadSampleData = () => {
@@ -494,6 +518,14 @@ export default function App() {
             )
           )}
         </main>
+
+        {pendingBlocks && (
+          <BlockPickerModal
+            blocks={pendingBlocks}
+            onSelect={handleSelectBlock}
+            onCancel={handleCancelBlockPicker}
+          />
+        )}
       </div>
     </AnimatedBackground>
   );

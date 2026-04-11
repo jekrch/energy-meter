@@ -181,13 +181,18 @@ describe('parseGreenButtonXML', () => {
     </feed>`;
 
   it('parses valid Green Button XML', () => {
-    const result = parseGreenButtonXML(validXML);
+    const { blocks } = parseGreenButtonXML(validXML);
 
-    expect(result.length).toBe(2);
-    expect(result[0].timestamp).toBe(1704067200);
-    expect(result[0].value).toBe(1500);
-    expect(result[0].cost).toBe(180);
-    expect(result[0].duration).toBe(3600);
+    expect(blocks.length).toBe(1);
+    const data = blocks[0].data;
+    expect(data.length).toBe(2);
+    expect(data[0].timestamp).toBe(1704067200);
+    expect(data[0].value).toBe(1500);
+    expect(data[0].cost).toBe(180);
+    expect(data[0].duration).toBe(3600);
+    expect(blocks[0].meta.readingCount).toBe(2);
+    expect(blocks[0].meta.totalValue).toBe(3500);
+    expect(blocks[0].meta.totalCost).toBe(420);
   });
 
   it('sorts results by timestamp', () => {
@@ -205,10 +210,11 @@ describe('parseGreenButtonXML', () => {
         </IntervalReading>
       </feed>`;
 
-    const result = parseGreenButtonXML(unsortedXML);
+    const { blocks } = parseGreenButtonXML(unsortedXML);
+    const data = blocks[0].data;
 
-    expect(result[0].timestamp).toBe(1704067200);
-    expect(result[1].timestamp).toBe(1704070800);
+    expect(data[0].timestamp).toBe(1704067200);
+    expect(data[1].timestamp).toBe(1704070800);
   });
 
   it('throws on invalid XML', () => {
@@ -229,12 +235,13 @@ describe('parseGreenButtonXML', () => {
         </IntervalReading>
       </feed>`;
 
-    const result = parseGreenButtonXML(minimalXML);
+    const { blocks } = parseGreenButtonXML(minimalXML);
+    const data = blocks[0].data;
 
-    expect(result[0].timestamp).toBe(1704067200);
-    expect(result[0].value).toBe(1000);
-    expect(result[0].cost).toBe(0);
-    expect(result[0].duration).toBeUndefined();
+    expect(data[0].timestamp).toBe(1704067200);
+    expect(data[0].value).toBe(1000);
+    expect(data[0].cost).toBe(0);
+    expect(data[0].duration).toBeUndefined();
   });
 
   it('handles namespaced XML elements', () => {
@@ -257,9 +264,120 @@ describe('parseGreenButtonXML', () => {
         </entry>
       </feed>`;
 
-    const result = parseGreenButtonXML(namespacedXML);
-    expect(result.length).toBe(1);
-    expect(result[0].value).toBe(500);
+    const { blocks } = parseGreenButtonXML(namespacedXML);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].data.length).toBe(1);
+    expect(blocks[0].data[0].value).toBe(500);
+  });
+
+  it('separates multiple IntervalBlocks (e.g. delivered + received for solar)', () => {
+    const multiBlockXML = `<?xml version="1.0"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <link rel="self" href="/ReadingType/1"/>
+          <content>
+            <ReadingType xmlns="http://naesb.org/espi">
+              <flowDirection>1</flowDirection>
+              <uom>72</uom>
+              <powerOfTenMultiplier>0</powerOfTenMultiplier>
+              <commodity>1</commodity>
+            </ReadingType>
+          </content>
+        </entry>
+        <entry>
+          <link rel="self" href="/ReadingType/19"/>
+          <content>
+            <ReadingType xmlns="http://naesb.org/espi">
+              <flowDirection>19</flowDirection>
+              <uom>72</uom>
+              <powerOfTenMultiplier>0</powerOfTenMultiplier>
+              <commodity>1</commodity>
+            </ReadingType>
+          </content>
+        </entry>
+        <entry>
+          <link rel="self" href="/IntervalBlock/A"/>
+          <link rel="related" href="/ReadingType/1"/>
+          <content>
+            <IntervalBlock xmlns="http://naesb.org/espi">
+              <IntervalReading>
+                <timePeriod><start>1704067200</start><duration>3600</duration></timePeriod>
+                <value>1000</value>
+                <cost>120</cost>
+              </IntervalReading>
+              <IntervalReading>
+                <timePeriod><start>1704070800</start><duration>3600</duration></timePeriod>
+                <value>2000</value>
+                <cost>240</cost>
+              </IntervalReading>
+            </IntervalBlock>
+          </content>
+        </entry>
+        <entry>
+          <link rel="self" href="/IntervalBlock/B"/>
+          <link rel="related" href="/ReadingType/19"/>
+          <content>
+            <IntervalBlock xmlns="http://naesb.org/espi">
+              <IntervalReading>
+                <timePeriod><start>1704067200</start><duration>3600</duration></timePeriod>
+                <value>500</value>
+                <cost>0</cost>
+              </IntervalReading>
+            </IntervalBlock>
+          </content>
+        </entry>
+      </feed>`;
+
+    const { blocks } = parseGreenButtonXML(multiBlockXML);
+
+    expect(blocks.length).toBe(2);
+
+    // Block A — forward/delivered
+    const delivered = blocks.find(b => b.meta.flowDirection === 1);
+    expect(delivered).toBeDefined();
+    expect(delivered!.data.length).toBe(2);
+    expect(delivered!.meta.totalValue).toBe(3000);
+    expect(delivered!.meta.flowDirectionLabel).toContain('Forward');
+
+    // Block B — reverse/received
+    const received = blocks.find(b => b.meta.flowDirection === 19);
+    expect(received).toBeDefined();
+    expect(received!.data.length).toBe(1);
+    expect(received!.meta.totalValue).toBe(500);
+    expect(received!.meta.flowDirectionLabel).toContain('Reverse');
+  });
+
+  it('applies powerOfTenMultiplier from ReadingType', () => {
+    const scaledXML = `<?xml version="1.0"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <link rel="self" href="/ReadingType/1"/>
+          <content>
+            <ReadingType xmlns="http://naesb.org/espi">
+              <flowDirection>1</flowDirection>
+              <uom>72</uom>
+              <powerOfTenMultiplier>3</powerOfTenMultiplier>
+            </ReadingType>
+          </content>
+        </entry>
+        <entry>
+          <link rel="related" href="/ReadingType/1"/>
+          <content>
+            <IntervalBlock xmlns="http://naesb.org/espi">
+              <IntervalReading>
+                <timePeriod><start>1704067200</start></timePeriod>
+                <value>2</value>
+                <cost>0</cost>
+              </IntervalReading>
+            </IntervalBlock>
+          </content>
+        </entry>
+      </feed>`;
+
+    const { blocks } = parseGreenButtonXML(scaledXML);
+    // value 2 * 10^3 = 2000
+    expect(blocks[0].data[0].value).toBe(2000);
+    expect(blocks[0].meta.powerOfTenMultiplier).toBe(3);
   });
 });
 
