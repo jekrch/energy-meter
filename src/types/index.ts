@@ -48,17 +48,3 @@ export const RESOLUTIONS: Record<string, { label: string; seconds: number }> = {
     WEEKLY: { label: 'Weekly Sum', seconds: 604800 },
 };
 
-
-export interface TimeRange {
-  start: number | null;
-  end: number | null;
-}
-
-export interface AnalysisFilters {
-  daysOfWeek: number[];
-  months: number[];
-  hourStart: number;
-  hourEnd: number;
-}
-
-

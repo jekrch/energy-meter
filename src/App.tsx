@@ -125,12 +125,27 @@ export default function App() {
     return new Date(chartData[0].timestamp * 1000).toDateString() !== new Date(chartData[chartData.length - 1].timestamp * 1000).toDateString();
   }, [chartData]);
 
+  // Single O(n) pass over rawData for both extents. Avoids four separate
+  // Math.max(...spread) passes (and the call-stack blowout that spread risks on
+  // 100k+ element arrays); yAxisMax/yAxisMaxCost/unit all derive from this.
+  const dataExtents = useMemo(() => {
+    let maxValue = 0;
+    let maxCost = 0;
+    if (rawData) {
+      for (const d of rawData) {
+        if (d.value > maxValue) maxValue = d.value;
+        const cost = d.cost ?? 0;
+        if (cost > maxCost) maxCost = cost;
+      }
+    }
+    return { maxValue, maxCost };
+  }, [rawData]);
+
   useEffect(() => {
     if (rawData && rawData.length > 0) {
-      const maxVal = Math.max(...rawData.map(d => d.value));
-      setEnergyUnit(suggestUnit(maxVal));
+      setEnergyUnit(suggestUnit(dataExtents.maxValue));
     }
-  }, [rawData]);
+  }, [rawData, dataExtents.maxValue]);
 
   const weatherDataMap = useMemo(() => {
     if (!weather.enabled || !weather.hourlyData.length) return new Map<number, number>();
@@ -180,25 +195,28 @@ export default function App() {
   }, [viewData, energyUnit]);
 
   const yAxisMax = useMemo(() => {
-    if (!rawData?.length) return 1000;
-    const max = Math.max(...rawData.map(d => d.value));
+    const max = dataExtents.maxValue;
+    if (!max) return 1000;
     const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
     return Math.ceil(max / magnitude) * magnitude;
-  }, [rawData]);
+  }, [dataExtents.maxValue]);
 
   const yAxisMaxCost = useMemo(() => {
-    if (!rawData?.length) return 100000;
-    const max = Math.max(...rawData.map(d => d.cost ?? 0));
+    const max = dataExtents.maxCost;
     if (max === 0) return 100000;
     const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
     return Math.ceil(max / magnitude) * magnitude;
-  }, [rawData]);
+  }, [dataExtents.maxCost]);
 
   const currentAnalysisMax = useMemo(() => {
-    const data = analysisView === 'averages' ? analysisResults.averages : analysisResults.timeline;
+    if (analysisView === 'averages') {
+      const data = analysisResults.averages;
+      if (!data.length) return 0;
+      return Math.max(...data.map(d => (metricMode === 'energy' ? d.average : d.avgCost) || 0));
+    }
+    const data = analysisResults.timeline;
     if (!data.length) return 0;
-    if (metricMode === 'energy') { const key = analysisView === 'averages' ? 'average' : 'value'; return Math.max(...data.map(d => d[key] || 0)); }
-    else { const key = analysisView === 'averages' ? 'avgCost' : 'cost'; return Math.max(...data.map(d => d[key] || 0)); }
+    return Math.max(...data.map(d => (metricMode === 'energy' ? d.value : d.cost) || 0));
   }, [analysisResults, analysisView, metricMode]);
 
   const analysisDomain = useMemo((): [number, number] => {

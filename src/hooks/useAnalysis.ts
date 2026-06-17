@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS } from '../types';
-import { formatShortDate } from '../utils/formatters';
 import { useDebouncedValue } from './useDebounceValue';
+import { accumulateBucket, finalizeBuckets } from './analysisAggregation';
 
 export interface AnalysisAverageResult {
     key: number;
@@ -28,6 +28,18 @@ export interface AnalysisResults {
     timeline: AnalysisTimelineResult[];
 }
 
+// One accumulated timeline period (keyed by group, e.g. a single month/day/hour bucket)
+export interface TimelineBucket {
+    sum: number;
+    costSum: number;
+    count: number;
+    timestamp: number;
+    label: string;
+    categoryKey: number;
+    periodStart: number;
+    periodEnd: number;
+}
+
 // Device-aware configuration
 const getDeviceConfig = () => {
     if (typeof navigator === 'undefined') {
@@ -39,8 +51,8 @@ const getDeviceConfig = () => {
     const isLowEnd = isMobile || cores <= 4;
     
     // Estimate available memory (very rough)
-    const lowMemory = (navigator as any).deviceMemory !== undefined 
-        ? (navigator as any).deviceMemory < 4 
+    const lowMemory = navigator.deviceMemory !== undefined
+        ? navigator.deviceMemory < 4
         : isMobile;
     
     return {
@@ -158,8 +170,8 @@ export function useAnalysis(
 
         // Use requestIdleCallback if available for lower priority work
         const scheduleWork = (callback: () => void) => {
-            if ('requestIdleCallback' in window) {
-                (window as any).requestIdleCallback(callback, { timeout: 100 });
+            if (window.requestIdleCallback) {
+                window.requestIdleCallback(callback, { timeout: 100 });
             } else {
                 requestAnimationFrame(callback);
             }
@@ -168,51 +180,12 @@ export function useAnalysis(
         // Helper to finalize and commit results
         const finalizeResults = (
             filteredData: DataPoint[],
-            timelineMap: Map<string, any>
+            timelineMap: Map<string, TimelineBucket>
         ) => {
             if (currentProcess !== processRef.current) return;
 
             try {
-                const timeline: AnalysisTimelineResult[] = Array.from(timelineMap.values())
-                    .sort((a, b) => a.timestamp - b.timestamp)
-                    .map(g => ({
-                        timestamp: g.timestamp,
-                        value: g.sum,
-                        cost: g.costSum,
-                        fullDate: g.label,
-                        count: g.count,
-                        categoryKey: g.categoryKey,
-                        periodStart: g.periodStart,
-                        periodEnd: g.periodEnd
-                    }));
-
-                const categoryTotals: { values: number[]; costs: number[] }[] =
-                    Array.from({ length: groupCount }, () => ({ values: [], costs: [] }));
-
-                for (const period of timelineMap.values()) {
-                    const cat = categoryTotals[period.categoryKey];
-                    if (cat) {
-                        cat.values.push(period.sum);
-                        cat.costs.push(period.costSum);
-                    }
-                }
-
-                const averages: AnalysisAverageResult[] = categoryTotals.map((group, idx) => {
-                    const valueCount = group.values.length;
-                    const costCount = group.costs.length;
-                    
-                    return {
-                        key: idx,
-                        label: labels[idx],
-                        average: valueCount > 0
-                            ? Math.round(group.values.reduce((a, b) => a + b, 0) / valueCount)
-                            : 0,
-                        avgCost: costCount > 0
-                            ? Math.round(group.costs.reduce((a, b) => a + b, 0) / costCount)
-                            : 0,
-                        count: valueCount,
-                    };
-                });
+                const { averages, timeline } = finalizeBuckets(timelineMap, groupCount, labels);
 
                 if (currentProcess === processRef.current) {
                     setResults({ filtered: filteredData, averages, timeline });
@@ -231,16 +204,7 @@ export function useAnalysis(
         const computeAggregates = (filteredData: DataPoint[]) => {
             if (currentProcess !== processRef.current) return;
 
-            const timelineMap = new Map<string, {
-                sum: number;
-                costSum: number;
-                count: number;
-                timestamp: number;
-                label: string;
-                categoryKey: number;
-                periodStart: number;
-                periodEnd: number;
-            }>();
+            const timelineMap = new Map<string, TimelineBucket>();
 
             const AGGCHUNK = DEVICE_CONFIG.chunkSize;
             let j = 0;
@@ -252,68 +216,7 @@ export function useAnalysis(
                     const end = Math.min(j + AGGCHUNK, filteredData.length);
                     
                     for (; j < end; j++) {
-                        const d = filteredData[j];
-                        const ts = d.timestamp * 1000;
-                        const date = new Date(ts);
-
-                        let categoryKey: number;
-                        if (debouncedGroupBy === 'dayOfWeek') {
-                            categoryKey = date.getDay();
-                        } else if (debouncedGroupBy === 'month') {
-                            categoryKey = date.getMonth();
-                        } else {
-                            categoryKey = date.getHours();
-                        }
-
-                        let tlKey: string;
-                        let tlLabel: string;
-                        let sortTs: number;
-                        let periodStart: number;
-                        let periodEnd: number;
-
-                        const year = date.getFullYear();
-                        const month = date.getMonth();
-                        const day = date.getDate();
-                        const hour = date.getHours();
-
-                        if (debouncedGroupBy === 'month') {
-                            tlKey = `${year}-${month}`;
-                            tlLabel = `${MONTHS[month]} ${year}`;
-                            sortTs = new Date(year, month, 1).getTime() / 1000;
-                            periodStart = sortTs;
-                            const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
-                            periodEnd = Math.floor(monthEnd.getTime() / 1000);
-                        } else if (debouncedGroupBy === 'dayOfWeek') {
-                            tlKey = `${year}-${month}-${day}`;
-                            tlLabel = `${DAYS_OF_WEEK[date.getDay()]} ${formatShortDate(date)}`;
-                            sortTs = new Date(year, month, day).getTime() / 1000;
-                            periodStart = sortTs;
-                            periodEnd = periodStart + 86400 - 1;
-                        } else {
-                            tlKey = `${year}-${month}-${day}-${hour}`;
-                            tlLabel = `${formatShortDate(date)} ${hour}:00`;
-                            sortTs = new Date(year, month, day, hour).getTime() / 1000;
-                            periodStart = sortTs;
-                            periodEnd = periodStart + 3600 - 1;
-                        }
-
-                        const existing = timelineMap.get(tlKey);
-                        if (existing) {
-                            existing.sum += d.value;
-                            existing.costSum += d.cost ?? 0;
-                            existing.count += 1;
-                        } else {
-                            timelineMap.set(tlKey, {
-                                sum: d.value,
-                                costSum: d.cost ?? 0,
-                                count: 1,
-                                timestamp: sortTs,
-                                label: tlLabel,
-                                categoryKey,
-                                periodStart,
-                                periodEnd
-                            });
-                        }
+                        accumulateBucket(timelineMap, filteredData[j], debouncedGroupBy);
                     }
 
                     if (j < filteredData.length) {

@@ -16,7 +16,7 @@ const variantConfig = {
   chart: { icon: BarChart2, color: 'emerald' },
   analysis: { icon: TrendingUp, color: 'blue' },
   data: { icon: FileText, color: 'purple' },
-};
+} as const;
 
 export const PulseLoader: React.FC<PulseLoaderProps> = ({
   message = 'Processing...',

@@ -1,13 +1,20 @@
 /// <reference types="bun-types" />
 import { describe, it, expect, beforeAll } from 'bun:test';
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
+import { readFileSync } from 'node:fs';
 import {
   downsampleLTTB,
   processDataAsync,
   parseGreenButtonXML,
-  createBrushData
+  createBrushData,
+  detectRateChanges,
+  formatRate
 } from './dataUtils';
 import type { DataPoint } from '../types';
+
+// Load a fixture file from the repo-root /fixtures dir relative to this test.
+const loadFixture = (name: string): string =>
+  readFileSync(new URL(`../../fixtures/${name}`, import.meta.url), 'utf-8');
 
 // Register browser APIs (DOMParser, etc.)
 GlobalRegistrator.register();
@@ -450,5 +457,194 @@ describe('createBrushData', () => {
     const data = createDataPoints(500);
     const result = createBrushData(data);
     expect(result.length).toBe(200);
+  });
+});
+
+// Real-world fixtures shipped in /fixtures — exercise the parser end-to-end on
+// the same files a user would actually upload.
+describe('parseGreenButtonXML — fixtures', () => {
+  it('parses the single-block consumption fixture', () => {
+    const { blocks } = parseGreenButtonXML(loadFixture('sample-single-block.xml'));
+
+    expect(blocks.length).toBe(1);
+    const block = blocks[0];
+    expect(block.data.length).toBe(168);
+    expect(block.meta.readingCount).toBe(168);
+    expect(block.meta.flowDirection).toBe(1);
+    expect(block.meta.flowDirectionLabel).toContain('Forward');
+    expect(block.meta.uomLabel).toBe('Wh');
+    expect(block.meta.powerOfTenMultiplier).toBe(0);
+    expect(block.meta.totalValue).toBeGreaterThan(0);
+    expect(block.meta.totalCost).toBeGreaterThan(0);
+    // data is sorted ascending by timestamp
+    expect(block.meta.startTimestamp).toBeLessThan(block.meta.endTimestamp);
+  });
+
+  it('keeps delivered and received separate for the solar net-metered fixture', () => {
+    const { blocks } = parseGreenButtonXML(loadFixture('sample-solar-net-metered.xml'));
+
+    expect(blocks.length).toBe(2);
+
+    const delivered = blocks.find(b => b.meta.flowDirection === 1);
+    const received = blocks.find(b => b.meta.flowDirection === 19);
+    expect(delivered).toBeDefined();
+    expect(received).toBeDefined();
+    expect(delivered!.meta.flowDirectionLabel).toContain('Forward');
+    expect(received!.meta.flowDirectionLabel).toContain('Reverse');
+    // Each block carries its own readings — totals are not merged.
+    expect(delivered!.data.length).toBe(168);
+    expect(received!.data.length).toBe(168);
+  });
+
+  it('keeps hourly and daily summary blocks separate (no double-counting)', () => {
+    const { blocks } = parseGreenButtonXML(loadFixture('sample-hourly-plus-daily.xml'));
+
+    expect(blocks.length).toBe(2);
+    const durations = blocks.map(b => b.meta.intervalLength).sort((a, b) => (a ?? 0) - (b ?? 0));
+    expect(durations).toEqual([3600, 86400]);
+
+    const hourly = blocks.find(b => b.meta.intervalLength === 3600)!;
+    const daily = blocks.find(b => b.meta.intervalLength === 86400)!;
+    expect(hourly.data.length).toBe(168);
+    expect(daily.data.length).toBe(7);
+  });
+});
+
+describe('parseGreenButtonXML — fallback paths', () => {
+  it('handles bare IntervalBlock with no entry wrapper', () => {
+    const bareBlockXML = `<?xml version="1.0"?>
+      <feed>
+        <IntervalBlock>
+          <IntervalReading>
+            <timePeriod><start>1704067200</start><duration>3600</duration></timePeriod>
+            <value>800</value>
+            <cost>96</cost>
+          </IntervalReading>
+          <IntervalReading>
+            <timePeriod><start>1704070800</start><duration>3600</duration></timePeriod>
+            <value>900</value>
+            <cost>108</cost>
+          </IntervalReading>
+        </IntervalBlock>
+      </feed>`;
+
+    const { blocks } = parseGreenButtonXML(bareBlockXML);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].data.length).toBe(2);
+    expect(blocks[0].meta.totalValue).toBe(1700);
+  });
+
+  it('handles bare IntervalReadings with no block wrapper', () => {
+    const bareReadingsXML = `<?xml version="1.0"?>
+      <feed>
+        <IntervalReading>
+          <timePeriod><start>1704067200</start></timePeriod>
+          <value>100</value>
+          <cost>10</cost>
+        </IntervalReading>
+        <IntervalReading>
+          <timePeriod><start>1704070800</start></timePeriod>
+          <value>200</value>
+          <cost>20</cost>
+        </IntervalReading>
+      </feed>`;
+
+    const { blocks } = parseGreenButtonXML(bareReadingsXML);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].data.length).toBe(2);
+    expect(blocks[0].meta.totalValue).toBe(300);
+  });
+});
+
+describe('detectRateChanges', () => {
+  // Build hourly readings at a fixed rate (cost = value * rate). A large value
+  // keeps cost integers precise so small rate deltas survive Math.round.
+  const ratedSeries = (rate: number, count: number, startTs = 1704067200): DataPoint[] =>
+    Array.from({ length: count }, (_, i) => ({
+      timestamp: startTs + i * 3600,
+      value: 10000,
+      cost: Math.round(10000 * rate),
+    }));
+
+  it('returns no changes for fewer than 2 points', () => {
+    expect(detectRateChanges([])).toEqual({ changes: [], periods: [] });
+    expect(detectRateChanges(ratedSeries(0.012, 1))).toEqual({ changes: [], periods: [] });
+  });
+
+  it('reports a single period when the rate is constant', () => {
+    const { changes, periods } = detectRateChanges(ratedSeries(0.012, 24));
+    expect(changes.length).toBe(0);
+    expect(periods.length).toBe(1);
+    expect(periods[0].readings).toBe(24);
+  });
+
+  it('detects an increase above the tolerance threshold', () => {
+    // 20% jump (> default 8% tolerance) halfway through.
+    const data = [...ratedSeries(0.010, 12), ...ratedSeries(0.012, 12, 1704067200 + 12 * 3600)];
+    const { changes, periods } = detectRateChanges(data);
+
+    expect(changes.length).toBe(1);
+    expect(changes[0].direction).toBe('increase');
+    expect(changes[0].percentChange).toBeGreaterThan(8);
+    expect(periods.length).toBe(2);
+  });
+
+  it('detects a decrease', () => {
+    const data = [...ratedSeries(0.014, 12), ...ratedSeries(0.010, 12, 1704067200 + 12 * 3600)];
+    const { changes } = detectRateChanges(data);
+
+    expect(changes.length).toBe(1);
+    expect(changes[0].direction).toBe('decrease');
+    expect(changes[0].percentChange).toBeLessThan(0);
+  });
+
+  it('ignores changes within the tolerance band', () => {
+    // 5% jump (< default 8% tolerance) — no change reported.
+    const data = [...ratedSeries(0.0100, 12), ...ratedSeries(0.0105, 12, 1704067200 + 12 * 3600)];
+    const { changes, periods } = detectRateChanges(data);
+
+    expect(changes.length).toBe(0);
+    expect(periods.length).toBe(1);
+  });
+
+  it('skips low-value/zero-cost readings when deriving rates', () => {
+    // value < 50 or cost == 0 are excluded; too few rated points → no result.
+    const noise: DataPoint[] = [
+      { timestamp: 1704067200, value: 10, cost: 0 },
+      { timestamp: 1704070800, value: 5, cost: 0 },
+    ];
+    expect(detectRateChanges(noise)).toEqual({ changes: [], periods: [] });
+  });
+});
+
+describe('formatRate', () => {
+  // rate is cost(cents)/value(Wh); display = rate * 10 $/kWh.
+  it('uses 2 decimals for rates >= $1/kWh', () => {
+    // 0.15 → $1.50/kWh
+    expect(formatRate(0.15)).toBe('1.50/kWh');
+  });
+
+  it('formats a typical residential rate (sub-$1) to 3 decimals', () => {
+    // 0.012 → $0.12/kWh (>= 0.01, < 1) → 3 decimals
+    expect(formatRate(0.012)).toBe('0.120/kWh');
+  });
+
+  it('returns $0.00/kWh for zero', () => {
+    expect(formatRate(0)).toBe('$0.00/kWh');
+  });
+
+  it('returns $0.00/kWh for non-finite input', () => {
+    expect(formatRate(Infinity)).toBe('$0.00/kWh');
+    expect(formatRate(NaN)).toBe('$0.00/kWh');
+  });
+
+  it('uses 3 decimals for sub-$1/kWh rates', () => {
+    // 0.05 → $0.50/kWh (>= 0.01, < 1) → 3 decimals
+    expect(formatRate(0.05)).toBe('0.500/kWh');
+  });
+
+  it('uses 4 decimals for very small rates', () => {
+    // 0.0005 → $0.005/kWh (< 0.01) → 4 decimals
+    expect(formatRate(0.0005)).toBe('0.0050/kWh');
   });
 });

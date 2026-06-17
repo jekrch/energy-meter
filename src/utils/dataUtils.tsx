@@ -73,29 +73,32 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
       // Aggregation logic - now sums both value AND cost
       requestAnimationFrame(() => {
         const interval = RESOLUTIONS[resolution].seconds;
-        const groups: Record<number, { value: number; cost: number }> = {};
+        // Map<number> keeps the bucket key numeric — no string/number coercion
+        // round-trip through Object.keys()/parseInt().
+        const groups = new Map<number, { value: number; cost: number }>();
 
         data.forEach(p => {
           const bucket = Math.floor(p.timestamp / interval) * interval;
-          if (!groups[bucket]) {
-            groups[bucket] = { value: 0, cost: 0 };
+          let group = groups.get(bucket);
+          if (!group) {
+            group = { value: 0, cost: 0 };
+            groups.set(bucket, group);
           }
-          groups[bucket].value += p.value;
-          groups[bucket].cost += p.cost;
+          group.value += p.value;
+          group.cost += p.cost;
         });
 
-        const result = Object.keys(groups)
-          .sort((a, b) => Number(a) - Number(b))
-          .map(ts => {
-            const timestamp = parseInt(ts);
+        const result = [...groups.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([timestamp, agg]) => {
             const dateObj = new Date(timestamp * 1000);
             const dateStr = formatShortDate(dateObj);
             const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             return {
               timestamp,
-              value: groups[timestamp].value,
-              cost: groups[timestamp].cost,
+              value: agg.value,
+              cost: agg.cost,
               date: dateStr,
               time: resolution === 'HOURLY' ? timeStr : '',
               fullDate: resolution === 'HOURLY' ? `${dateStr}, ${timeStr}` : dateStr
@@ -586,13 +589,18 @@ export const detectRateChanges = (
     readings: 1
   };
 
-  // Use a rolling median to smooth out noise
+  // Use a rolling median to smooth out noise. The window is fixed at ≤3, so the
+  // median comes from direct comparisons rather than slice/map/sort per point.
   const windowSize = 3;
   const getSmoothedRate = (idx: number): number => {
     const start = Math.max(0, idx - Math.floor(windowSize / 2));
     const end = Math.min(ratedPoints.length, idx + Math.ceil(windowSize / 2));
-    const rates = ratedPoints.slice(start, end).map(p => p.rate).sort((a, b) => a - b);
-    return rates[Math.floor(rates.length / 2)];
+    const a = ratedPoints[start].rate;
+    if (end - start === 1) return a;
+    const b = ratedPoints[start + 1].rate;
+    if (end - start === 2) return Math.max(a, b); // matches sort()[floor(2/2)]
+    const c = ratedPoints[start + 2].rate;
+    return Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
   };
 
   let lastSignificantRate = getSmoothedRate(0);
