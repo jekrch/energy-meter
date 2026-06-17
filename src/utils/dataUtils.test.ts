@@ -618,15 +618,15 @@ describe('detectRateChanges', () => {
 });
 
 describe('formatRate', () => {
-  // rate is cost(cents)/value(Wh); display = rate * 10 $/kWh.
+  // rate is cost(micro-dollars)/value(Wh); display = rate * 0.01 $/kWh.
   it('uses 2 decimals for rates >= $1/kWh', () => {
-    // 0.15 → $1.50/kWh
-    expect(formatRate(0.15)).toBe('1.50/kWh');
+    // 150 → $1.50/kWh
+    expect(formatRate(150)).toBe('$1.50/kWh');
   });
 
   it('formats a typical residential rate (sub-$1) to 3 decimals', () => {
-    // 0.012 → $0.12/kWh (>= 0.01, < 1) → 3 decimals
-    expect(formatRate(0.012)).toBe('0.120/kWh');
+    // 12 → $0.12/kWh (>= 0.01, < 1) → 3 decimals
+    expect(formatRate(12)).toBe('$0.120/kWh');
   });
 
   it('returns $0.00/kWh for zero', () => {
@@ -639,12 +639,12 @@ describe('formatRate', () => {
   });
 
   it('uses 3 decimals for sub-$1/kWh rates', () => {
-    // 0.05 → $0.50/kWh (>= 0.01, < 1) → 3 decimals
-    expect(formatRate(0.05)).toBe('0.500/kWh');
+    // 50 → $0.50/kWh (>= 0.01, < 1) → 3 decimals
+    expect(formatRate(50)).toBe('$0.500/kWh');
   });
 
   it('uses 4 decimals for very small rates', () => {
-    // 0.0005 → $0.005/kWh (< 0.01) → 4 decimals
-    expect(formatRate(0.0005)).toBe('0.0050/kWh');
+    // 0.5 → $0.005/kWh (< 0.01) → 4 decimals
+    expect(formatRate(0.5)).toBe('$0.0050/kWh');
   });
 });

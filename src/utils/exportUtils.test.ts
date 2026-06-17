@@ -48,10 +48,12 @@ describe('rowToCsv', () => {
 
 describe('computeRate', () => {
   it('scales by the rate-unit multiplier and rounds to its decimals', () => {
-    // (cost / energy) * 10 = base; then * multiplier.
-    expect(computeRate(120, 1000, DOLLAR_PER_KWH)).toBe(1.2);
-    expect(computeRate(120, 1000, CENT_PER_KWH)).toBe(120);
-    expect(computeRate(120, 1000, DOLLAR_PER_MWH)).toBe(1200);
+    // cost is micro-dollars: base $/kWh = (cost / 100_000) / (energy / 1_000)
+    //   = (cost / energy) * 0.01; then * multiplier.
+    // 12000 micro-$ over 1000 Wh = $0.12/kWh.
+    expect(computeRate(12000, 1000, DOLLAR_PER_KWH)).toBe(0.12);
+    expect(computeRate(12000, 1000, CENT_PER_KWH)).toBe(12);
+    expect(computeRate(12000, 1000, DOLLAR_PER_MWH)).toBe(120);
   });
 
   it('returns null for zero or negative energy', () => {

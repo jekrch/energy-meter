@@ -134,7 +134,7 @@ export function computeRate(
 ): number | null {
   const kWh = energyWh / 1000;
   if (kWh <= 0) return null;
-  const baseDollarsPerKwh = (costRaw / energyWh) * 10;
+  const baseDollarsPerKwh = (costRaw / energyWh) * 0.01;
   return parseFloat((baseDollarsPerKwh * rateUnit.multiplier).toFixed(rateUnit.decimals));
 }
 

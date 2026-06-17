@@ -371,7 +371,7 @@ export const generateSampleData = (): DataPoint[] => {
   let time = new Date(`${startYear}-01-01T00:00:00`).getTime() / 1000;
   const totalHours = 2 * 365 * 24;
 
-  const BASE_RATE = 0.012; // cents per Wh (~$0.12/kWh)
+  const BASE_RATE = 12; // micro-dollars per Wh (~$0.12/kWh), matching the GB parser's cost unit
 
   // Rate change points (as fraction of total duration)
   const firstChangePoint = Math.floor(totalHours * 0.35);  // ~4.5 months in
@@ -639,14 +639,14 @@ export const detectRateChanges = (
   return { changes, periods };
 };
 
-// Convert rate (cents/Wh) to $/kWh for display
-// rate = cost/value where cost is in cents and value is in Wh
-// To get $/kWh: rate * 1000 (Wh→kWh) / 100 (cents→$) = rate * 10
+// Convert rate (micro-dollars/Wh) to $/kWh for display
+// rate = cost/value where cost is in micro-dollars (1/100000 $) and value is in Wh
+// To get $/kWh: rate * 1000 (Wh→kWh) / 100000 (micro-$→$) = rate * 0.01
 export const formatRate = (rate: number): string => {
-  const dollarsPerKwh = rate * 10;
+  const dollarsPerKwh = rate * 0.01;
 
   if (!isFinite(dollarsPerKwh) || dollarsPerKwh === 0) return '$0.00/kWh';
-  if (dollarsPerKwh < 0.01) return `${dollarsPerKwh.toFixed(4)}/kWh`;
-  if (dollarsPerKwh < 1) return `${dollarsPerKwh.toFixed(3)}/kWh`;
-  return `${dollarsPerKwh.toFixed(2)}/kWh`;
+  if (dollarsPerKwh < 0.01) return `$${dollarsPerKwh.toFixed(4)}/kWh`;
+  if (dollarsPerKwh < 1) return `$${dollarsPerKwh.toFixed(3)}/kWh`;
+  return `$${dollarsPerKwh.toFixed(2)}/kWh`;
 };
