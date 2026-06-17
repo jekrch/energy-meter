@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS } from '../types';
 import { useDebouncedValue } from './useDebounceValue';
 import { accumulateBucket, finalizeBuckets } from './analysisAggregation';
+import { runChunked, scheduleIdleWork } from './chunkedRunner';
 
 export interface AnalysisAverageResult {
     key: number;
@@ -133,6 +134,9 @@ export function useAnalysis(
     // Sample data if too large for device
     const workingData = useMemo(() => {
         if (selectionData.length > DEVICE_CONFIG.maxDataPoints) {
+            // samplingWarningShown is a dev-only dedupe flag for the warning
+            // below — never read for rendering, so the render-time access is fine.
+            /* eslint-disable react-hooks/refs */
             if (!samplingWarningShown.current) {
                 console.warn(
                     `Dataset (${selectionData.length} points) exceeds device limit. ` +
@@ -140,6 +144,7 @@ export function useAnalysis(
                 );
                 samplingWarningShown.current = true;
             }
+            /* eslint-enable react-hooks/refs */
             return sampleData(selectionData, DEVICE_CONFIG.maxDataPoints);
         }
         return selectionData;
@@ -168,12 +173,14 @@ export function useAnalysis(
         const hasHourFilter = debouncedHourStart > 0 || debouncedHourEnd < 23;
         const hasAnyFilter = hasDayFilter || hasMonthFilter || hasHourFilter;
 
-        // Use requestIdleCallback if available for lower priority work
-        const scheduleWork = (callback: () => void) => {
-            if (window.requestIdleCallback) {
-                window.requestIdleCallback(callback, { timeout: 100 });
-            } else {
-                requestAnimationFrame(callback);
+        const isStale = () => currentProcess !== processRef.current;
+
+        // Abort handler shared by the chunked passes: drop results and stop.
+        const failWith = (context: string) => (err: unknown) => {
+            console.error(`Error in ${context}:`, err);
+            if (currentProcess === processRef.current) {
+                setResults(EMPTY_RESULTS);
+                setIsProcessing(false);
             }
         };
 
@@ -200,45 +207,27 @@ export function useAnalysis(
             }
         };
 
-        // Aggregation logic with error handling
+        // Accumulate buckets in chunks, then finalize. The math lives in
+        // accumulateBucket; runChunked owns the yielding/cancellation.
         const computeAggregates = (filteredData: DataPoint[]) => {
             if (currentProcess !== processRef.current) return;
 
             const timelineMap = new Map<string, TimelineBucket>();
 
-            const AGGCHUNK = DEVICE_CONFIG.chunkSize;
-            let j = 0;
-
-            const processAggChunk = () => {
-                if (currentProcess !== processRef.current) return;
-
-                try {
-                    const end = Math.min(j + AGGCHUNK, filteredData.length);
-                    
-                    for (; j < end; j++) {
-                        accumulateBucket(timelineMap, filteredData[j], debouncedGroupBy);
-                    }
-
-                    if (j < filteredData.length) {
-                        scheduleWork(processAggChunk);
-                    } else {
-                        scheduleWork(() => finalizeResults(filteredData, timelineMap));
-                    }
-                } catch (err) {
-                    console.error('Error in aggregation chunk:', err);
-                    if (currentProcess === processRef.current) {
-                        setResults(EMPTY_RESULTS);
-                        setIsProcessing(false);
-                    }
-                }
-            };
-
-            scheduleWork(processAggChunk);
+            runChunked({
+                data: filteredData,
+                chunkSize: DEVICE_CONFIG.chunkSize,
+                schedule: scheduleIdleWork,
+                processItem: (point) => accumulateBucket(timelineMap, point, debouncedGroupBy),
+                onDone: () => finalizeResults(filteredData, timelineMap),
+                isCancelled: isStale,
+                onError: failWith('aggregation chunk'),
+            });
         };
 
         // FAST PATH: No filters - skip filtering entirely
         if (!hasAnyFilter) {
-            scheduleWork(() => {
+            scheduleIdleWork(() => {
                 if (currentProcess === processRef.current) {
                     computeAggregates(workingData);
                 }
@@ -247,50 +236,32 @@ export function useAnalysis(
         }
 
         // FILTERED PATH: Process in chunks
-        const CHUNK = DEVICE_CONFIG.chunkSize;
-        let i = 0;
         const filtered: DataPoint[] = [];
 
-        const processFilterChunk = () => {
-            if (currentProcess !== processRef.current) return;
+        runChunked({
+            data: workingData,
+            chunkSize: DEVICE_CONFIG.chunkSize,
+            schedule: scheduleIdleWork,
+            processItem: (d) => {
+                const date = new Date(d.timestamp * 1000);
 
-            try {
-                const end = Math.min(i + CHUNK, workingData.length);
-                
-                for (; i < end; i++) {
-                    const d = workingData[i];
-                    const ts = d.timestamp * 1000;
-                    const date = new Date(ts);
-                    
-                    if (hasDayFilter && !daysOfWeek.has(date.getDay())) continue;
-                    if (hasMonthFilter && !months.has(date.getMonth())) continue;
-                    if (hasHourFilter) {
-                        const hour = date.getHours();
-                        if (hour < debouncedHourStart || hour > debouncedHourEnd) continue;
-                    }
-                    
-                    filtered.push(d);
+                if (hasDayFilter && !daysOfWeek.has(date.getDay())) return;
+                if (hasMonthFilter && !months.has(date.getMonth())) return;
+                if (hasHourFilter) {
+                    const hour = date.getHours();
+                    if (hour < debouncedHourStart || hour > debouncedHourEnd) return;
                 }
 
-                if (i < workingData.length) {
-                    scheduleWork(processFilterChunk);
-                } else {
-                    scheduleWork(() => {
-                        if (currentProcess === processRef.current) {
-                            computeAggregates(filtered);
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error('Error in filter chunk:', err);
+                filtered.push(d);
+            },
+            onDone: () => {
                 if (currentProcess === processRef.current) {
-                    setResults(EMPTY_RESULTS);
-                    setIsProcessing(false);
+                    computeAggregates(filtered);
                 }
-            }
-        };
-
-        scheduleWork(processFilterChunk);
+            },
+            isCancelled: isStale,
+            onError: failWith('filter chunk'),
+        });
 
         return () => { processRef.current++; };
     }, [

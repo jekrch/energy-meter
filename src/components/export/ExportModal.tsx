@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { Download, X, FileJson, FileSpreadsheet, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
+import { PillGroup, PillButton } from '../common/PillButton';
 import type { DataPoint } from '../../types';
 import { type EnergyUnit } from '../../utils/energyUnits';
 import { formatShortDate } from '../../utils/formatters';
@@ -397,32 +398,28 @@ export const ExportModal = React.memo(function ExportModal({
               <label className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">
                 Format
               </label>
-              <div className="flex bg-slate-900/60 p-0.5 rounded-lg border border-slate-700/50">
-                <button
-                  onClick={() => !isExporting && setFormat('csv')}
+              <PillGroup className="bg-slate-900/60 rounded-lg">
+                <PillButton
+                  active={format === 'csv'}
+                  onClick={() => setFormat('csv')}
                   disabled={isExporting}
-                  className={`flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
-                    format === 'csv'
-                      ? 'bg-emerald-500/15 text-emerald-400 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  } ${isExporting ? 'pointer-events-none' : ''}`}
+                  activeClassName="bg-emerald-500/15 text-emerald-400 shadow-sm"
+                  className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs rounded-md"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   CSV
-                </button>
-                <button
-                  onClick={() => !isExporting && setFormat('json')}
+                </PillButton>
+                <PillButton
+                  active={format === 'json'}
+                  onClick={() => setFormat('json')}
                   disabled={isExporting}
-                  className={`flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
-                    format === 'json'
-                      ? 'bg-emerald-500/15 text-emerald-400 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  } ${isExporting ? 'pointer-events-none' : ''}`}
+                  activeClassName="bg-emerald-500/15 text-emerald-400 shadow-sm"
+                  className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs rounded-md"
                 >
                   <FileJson className="w-3.5 h-3.5" />
                   JSON
-                </button>
-              </div>
+                </PillButton>
+              </PillGroup>
             </div>
 
             {/* Group by */}
@@ -506,22 +503,21 @@ export const ExportModal = React.memo(function ExportModal({
                   <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">
                     Rate Unit
                   </label>
-                  <div className="flex bg-slate-900/60 p-0.5 rounded-md border border-slate-700/50">
+                  <PillGroup className="bg-slate-900/60 rounded-md">
                     {RATE_UNIT_OPTIONS.map(opt => (
-                      <button
+                      <PillButton
                         key={opt.value}
-                        onClick={() => !isExporting && setRateUnit(opt.value)}
+                        active={rateUnit === opt.value}
+                        onClick={() => setRateUnit(opt.value)}
                         disabled={isExporting}
-                        className={`flex-1 px-2 py-1.5 text-[11px] font-medium rounded transition-all ${
-                          rateUnit === opt.value
-                            ? 'bg-amber-500/15 text-amber-400 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-300'
-                        } ${isExporting ? 'pointer-events-none' : ''}`}
+                        activeClassName="bg-amber-500/15 text-amber-400 shadow-sm"
+                        inactiveClassName="text-slate-500 hover:text-slate-300"
+                        className="flex-1 px-2 py-1.5 text-[11px] rounded"
                       >
                         {opt.label}
-                      </button>
+                      </PillButton>
                     ))}
-                  </div>
+                  </PillGroup>
                 </div>
               </div>
             )}

@@ -1,17 +1,20 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon } from 'lucide-react';
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
-import { type DataPoint, type TimeRange, type MetricMode, RESOLUTIONS } from './types';
+import { type TimeRange, type MetricMode } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { processDataAsync, parseGreenButtonXML, generateSampleData, downsampleLTTB, createBrushData, type ParsedBlock } from './utils/dataUtils';
-import { type EnergyUnit, ENERGY_UNITS, formatEnergyValue, suggestUnit } from './utils/energyUnits';
+import { createBrushData } from './utils/dataUtils';
+import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { aggregateWeatherData } from './utils/weatherData';
+import { ROWS_PER_PAGE, BRUSH_POINTS, RATE_TOLERANCE_PERCENT } from './constants';
 
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
 import { useWeather } from './hooks/useWeather';
+import { useEnergyData } from './hooks/useEnergyData';
+import { useChartProcessing } from './hooks/useChartProcessing';
 
 // Components
 import { StatCard } from './components/common/StatCard';
@@ -22,23 +25,14 @@ import { DateRangeControls } from './components/dashboard/DateRangeControls';
 import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
 import { TableView } from './components/dashboard/TableView';
-import { WeatherSettings } from './components/common/WeatherSettings';
+import { ChartToolbar } from './components/dashboard/ChartToolbar';
 import { InsightsModal, type InsightPreset } from './components/common/InsightsModal';
 import { RateChangesCard } from './components/dashboard/RateChangesCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 import { BlockPickerModal } from './components/common/BlockPickerModal';
 
-const ROWS_PER_PAGE = 50;
-const MAX_CHART_POINTS = 800;
-
 export default function App() {
-  const [rawData, setRawData] = useState<DataPoint[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [pendingBlocks, setPendingBlocks] = useState<ParsedBlock[] | null>(null);
-
   // UI State
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
   const [resolution, setResolution] = useState<string>('RAW');
@@ -46,19 +40,28 @@ export default function App() {
   const [metricMode, setMetricMode] = useState<MetricMode>('cost');
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
+  // Dataset, upload pipeline, and data bounds
+  const {
+    rawData,
+    loading,
+    error,
+    fileName,
+    pendingBlocks,
+    dataBounds,
+    handleFileUpload,
+    handleSelectBlock,
+    handleCancelBlockPicker,
+    loadSampleData,
+    reset,
+  } = useEnergyData({ setResolution, onLoadStart: () => setPage(1) });
+
   // Time State
-  const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
 
   // Analysis State
   const [groupBy, setGroupBy] = useState<'dayOfWeek' | 'month' | 'hour'>('hour');
   const [analysisView, setAnalysisView] = useState<'averages' | 'timeline'>('averages');
   const [autoZoom, setAutoZoom] = useState(false);
-
-  // Processing Refs
-  const [aggregatedData, setAggregatedData] = useState<DataPoint[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const processingRef = useRef(0);
 
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
   const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
@@ -71,9 +74,11 @@ export default function App() {
   useEffect(() => {
     if (rawData && rawData.length > 0) {
       const bounds = { start: rawData[0].timestamp, end: rawData[rawData.length - 1].timestamp };
-      setDataBounds(bounds);
+      // viewRange is user-mutable (zoom/brush); reset it to full bounds whenever a
+      // new dataset loads. Genuinely an effect, not derived render state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setViewRange(bounds);
-      setBrushData(createBrushData(rawData, 200));
+      setBrushData(createBrushData(rawData, BRUSH_POINTS));
     }
   }, [rawData]);
 
@@ -92,33 +97,7 @@ export default function App() {
     originalCount
   } = useAnalysis(activeTab, viewData, groupBy);
 
-  useEffect(() => {
-    const currentProcess = ++processingRef.current;
-    if (!viewData.length) { setAggregatedData([]); return; }
-
-    setIsProcessing(true);
-
-    requestAnimationFrame(() => {
-      const startTime = Date.now();
-      const MIN_LOADING_TIME = 300;
-
-      processDataAsync(viewData, resolution).then(result => {
-        if (currentProcess === processingRef.current) {
-          const elapsed = Date.now() - startTime;
-          const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);
-
-          setTimeout(() => {
-            if (currentProcess === processingRef.current) {
-              setAggregatedData(result);
-              setIsProcessing(false);
-            }
-          }, remainingTime);
-        }
-      });
-    });
-  }, [viewData, resolution]);
-
-  const chartData = useMemo(() => downsampleLTTB(aggregatedData, MAX_CHART_POINTS), [aggregatedData]);
+  const { isProcessing, chartData } = useChartProcessing(viewData, resolution);
 
   const spansMultipleDays = useMemo(() => {
     if (chartData.length < 2) return false;
@@ -143,6 +122,9 @@ export default function App() {
 
   useEffect(() => {
     if (rawData && rawData.length > 0) {
+      // energyUnit is user-overridable in the toolbar; re-suggest a default only
+      // when a new dataset's magnitude changes. Intentional effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnergyUnit(suggestUnit(dataExtents.maxValue));
     }
   }, [rawData, dataExtents.maxValue]);
@@ -227,46 +209,6 @@ export default function App() {
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
   // --- Handlers ---
-  const applyBlock = (block: ParsedBlock) => {
-    setRawData(block.data);
-    setResolution(block.data.length > 2000 ? 'DAILY' : 'RAW');
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true); setError(null); setFileName(file.name); setPage(1);
-    setPendingBlocks(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const { blocks } = parseGreenButtonXML(ev.target?.result as string);
-        if (blocks.length === 0) throw new Error('No IntervalReading data found.');
-        if (blocks.length === 1) applyBlock(blocks[0]);
-        else setPendingBlocks(blocks);
-      }
-      catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
-      finally { setLoading(false); }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSelectBlock = (idx: number) => {
-    if (!pendingBlocks) return;
-    applyBlock(pendingBlocks[idx]);
-    setPendingBlocks(null);
-  };
-
-  const handleCancelBlockPicker = () => {
-    setPendingBlocks(null);
-    setFileName(null);
-  };
-
-  const loadSampleData = () => {
-    setLoading(true); setFileName("demo.xml"); setError(null); setPage(1);
-    setTimeout(() => { setRawData(generateSampleData()); setResolution('DAILY'); setLoading(false); }, 300);
-  };
-
   const handleViewInput = (field: 'start' | 'end', value: string) => {
     const ts = parseDateTimeLocal(value);
     if (ts && dataBounds.start !== null && dataBounds.end !== null) {
@@ -307,7 +249,7 @@ export default function App() {
                 {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}
               </div>
             </div>
-            {rawData && <button onClick={() => { setRawData(null); setFileName(null); setError(null); }} className="text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded transition-colors">Upload</button>}
+            {rawData && <button onClick={reset} className="text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded transition-colors">Upload</button>}
           </div>
         </header>
 
@@ -388,104 +330,18 @@ export default function App() {
                     </div>
 
                     {showChartControls && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-
-                          <button
-                            onClick={() => setMetricMode('cost')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${metricMode === 'cost'
-                                ? 'bg-emerald-500/15 text-emerald-400 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-200'
-                              }`}
-                          >
-                            <DollarSign className="w-3.5 h-3.5" />
-                            <span className="hidden xs:inline">Cost</span>
-                          </button>
-                          <button
-                            onClick={() => setMetricMode('energy')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${metricMode === 'energy'
-                                ? 'bg-amber-500/15 text-amber-400 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-200'
-                              }`}
-                          >
-                            <Zap className="w-3.5 h-3.5" />
-                            <span className="hidden xs:inline">Energy</span>
-                          </button>
-
-                        </div>
-
-                        {metricMode === 'energy' && (
-                          <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-                            {ENERGY_UNITS.map(({ value, label }) => (
-                              <button
-                                key={value}
-                                onClick={() => setEnergyUnit(value)}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${energyUnit === value
-                                    ? 'bg-amber-500/15 text-amber-400 shadow-sm'
-                                    : 'text-slate-400 hover:text-slate-200'
-                                  }`}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {activeTab === 'chart' && (
-                          <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-                            {Object.keys(RESOLUTIONS).map((key) => (
-                              <button
-                                key={key}
-                                onClick={() => setResolution(key)}
-                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${resolution === key
-                                    ? 'bg-slate-700 text-emerald-400 shadow-sm'
-                                    : 'text-slate-400 hover:text-slate-200'
-                                  }`}
-                              >
-                                {RESOLUTIONS[key].label.split(' ')[0]}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="flex-1 min-w-0" />
-
-                        <div className="flex items-center gap-1.5">
-                          <WeatherSettings
-                            enabled={weather.enabled}
-                            zipCode={weather.zipCode}
-                            location={weather.location}
-                            isLoading={weather.isLoading}
-                            error={weather.error}
-                            onSetZipCode={weather.setZipCode}
-                            onToggle={weather.toggleEnabled}
-                            onClear={weather.clearLocation}
-                          />
-
-                          {weather.enabled && weather.location && (
-                            <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-                              <button
-                                onClick={() => setTemperatureUnit('F')}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${temperatureUnit === 'F'
-                                    ? 'bg-sky-500/15 text-sky-400 shadow-sm'
-                                    : 'text-slate-400 hover:text-slate-200'
-                                  }`}
-                              >
-                                °F
-                              </button>
-                              <button
-                                onClick={() => setTemperatureUnit('C')}
-                                className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${temperatureUnit === 'C'
-                                    ? 'bg-sky-500/15 text-sky-400 shadow-sm'
-                                    : 'text-slate-400 hover:text-slate-200'
-                                  }`}
-                              >
-                                °C
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <ChartToolbar
+                        activeTab={activeTab}
+                        metricMode={metricMode}
+                        setMetricMode={setMetricMode}
+                        energyUnit={energyUnit}
+                        setEnergyUnit={setEnergyUnit}
+                        resolution={resolution}
+                        setResolution={setResolution}
+                        temperatureUnit={temperatureUnit}
+                        setTemperatureUnit={setTemperatureUnit}
+                        weather={weather}
+                      />
                     )}
                   </div>
 
@@ -531,7 +387,7 @@ export default function App() {
                 </div>
 
                 {/* Rate Changes Card */}
-                <RateChangesCard data={viewData} tolerancePercent={8} />
+                <RateChangesCard data={viewData} tolerancePercent={RATE_TOLERANCE_PERCENT} />
               </div>
             )
           )}
