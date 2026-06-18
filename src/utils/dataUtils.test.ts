@@ -144,6 +144,34 @@ describe('processDataAsync', () => {
     expect(result[1].cost).toBe(70);
   });
 
+  it('populates per-reading demand (kW) on RAW points', async () => {
+    const baseTimestamp = 1704067200;
+    const data: DataPoint[] = [
+      { timestamp: baseTimestamp, value: 1000, cost: 10, duration: 900 },   // 15-min → ×4 → 4 kW
+      { timestamp: baseTimestamp + 900, value: 1500, cost: 15, duration: 3600 }, // hourly → ×1 → 1.5 kW
+    ];
+
+    const result = await processDataAsync(data, 'RAW');
+    expect(result[0].demand).toBe(4);
+    expect(result[1].demand).toBe(1.5);
+  });
+
+  it('aggregates demand as the bucket PEAK, not the sum', async () => {
+    const baseTimestamp = 1704067200; // 2024-01-01 00:00:00 UTC
+    const data: DataPoint[] = [
+      { timestamp: baseTimestamp, value: 1000, cost: 10, duration: 900 },        // 4 kW
+      { timestamp: baseTimestamp + 900, value: 2000, cost: 20, duration: 900 },  // 8 kW (peak)
+      { timestamp: baseTimestamp + 1800, value: 500, cost: 5, duration: 900 },   // 2 kW
+    ];
+
+    const result = await processDataAsync(data, 'HOURLY');
+    expect(result.length).toBe(1);
+    // energy still sums…
+    expect(result[0].value).toBe(3500);
+    // …but demand is the single highest interval, never 4+8+2.
+    expect(result[0].demand).toBe(8);
+  });
+
   it('sorts aggregated results chronologically', async () => {
     const baseTimestamp = 1704067200;
     const data: DataPoint[] = [

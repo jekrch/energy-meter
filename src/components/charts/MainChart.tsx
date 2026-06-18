@@ -6,10 +6,14 @@ import { Loader2 } from 'lucide-react';
 import type { DataPoint } from '../../types';
 import { formatCostAxis } from '../../utils/formatters';
 import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
+import { formatDemandAxis } from '../../utils/demandUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 
-export type MetricMode = 'energy' | 'cost';
+// Canonical definition lives in types/index.ts; re-exported here so existing
+// imports (InsightsModal, AnalysisPanel) keep working unchanged.
+export type { MetricMode } from '../../types';
+import type { MetricMode } from '../../types';
 
 interface MainChartProps {
     data: DataPoint[];
@@ -34,11 +38,13 @@ export const MainChart = React.memo(function MainChart({
     const isTouchDevice = useTouchDevice();
     const { activeIndex, tooltipRef, chartContainerRef, handleChartClick } = useTooltipControl(isTouchDevice);
 
-    const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
-    const gradientId = metricMode === 'energy' ? 'colorEnergy' : 'colorCost';
+    const chartColor = metricMode === 'energy' ? '#f59e0b' : metricMode === 'demand' ? '#8b5cf6' : '#10b981';
+    const gradientId = metricMode === 'energy' ? 'colorEnergy' : metricMode === 'demand' ? 'colorDemand' : 'colorCost';
 
     const yAxisFormatter = metricMode === 'energy'
         ? (val: number) => formatEnergyAxis(val, energyUnit)
+        : metricMode === 'demand'
+        ? formatDemandAxis
         : formatCostAxis;
 
     const chartDataWithWeather: ChartDataPoint[] = useMemo(() => {
@@ -77,9 +83,11 @@ export const MainChart = React.memo(function MainChart({
         label: d.fullDate || d.label || '',
         energyValue: d.value,
         costValue: d.cost,
+        demandValue: d.demand,
         temperature: d.temperature,
-        showAggregatedNote: resolution !== 'RAW' && resolution !== 'HOURLY'
-    }), [resolution]);
+        // Demand buckets show the peak, not a sum — suppress the "aggregated total" note.
+        showAggregatedNote: metricMode !== 'demand' && resolution !== 'RAW' && resolution !== 'HOURLY'
+    }), [resolution, metricMode]);
 
     const tempAxisFormatter = (val: number) => {
         if (temperatureUnit === 'F') return `${Math.round(val * 9 / 5 + 32)}°`;
@@ -165,7 +173,7 @@ export const MainChart = React.memo(function MainChart({
                         <Area
                             yAxisId="primary"
                             type="monotone"
-                            dataKey={metricMode === 'energy' ? 'value' : 'cost'}
+                            dataKey={metricMode === 'energy' ? 'value' : metricMode === 'demand' ? 'demand' : 'cost'}
                             stroke={chartColor}
                             strokeWidth={2}
                             fillOpacity={1}

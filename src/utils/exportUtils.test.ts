@@ -199,10 +199,23 @@ describe('buildAggRow', () => {
     label: 'Jan 2024',
     energySum: 5000,
     costSum: 250000,
+    demandMax: 8,
     tempSum: 40,
     tempCount: 2,
     count: 24,
   };
+
+  it('emits the bucket peak demand (kW) when demand is enabled', () => {
+    const row = buildAggRow(
+      bucket,
+      new Set(['demand']),
+      'kWh',
+      'C',
+      identity,
+      DOLLAR_PER_KWH,
+    );
+    expect(row.peak_demand_kw).toBe(8);
+  });
 
   it('sums energy/cost, averages temperature, and always reports readings', () => {
     const row = buildAggRow(

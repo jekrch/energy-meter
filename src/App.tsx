@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge } from 'lucide-react';
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
@@ -7,6 +7,7 @@ import { type TimeRange, type MetricMode } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { createBrushData } from './utils/dataUtils';
 import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
+import { toDemandKW, formatDemandValue } from './utils/demandUnits';
 import { aggregateWeatherData } from './utils/weatherData';
 import { ROWS_PER_PAGE, BRUSH_POINTS, RATE_TOLERANCE_PERCENT } from './constants';
 
@@ -110,14 +111,17 @@ export default function App() {
   const dataExtents = useMemo(() => {
     let maxValue = 0;
     let maxCost = 0;
+    let maxDemand = 0;
     if (rawData) {
       for (const d of rawData) {
         if (d.value > maxValue) maxValue = d.value;
         const cost = d.cost ?? 0;
         if (cost > maxCost) maxCost = cost;
+        const demand = toDemandKW(d.value, d.duration);
+        if (demand > maxDemand) maxDemand = demand;
       }
     }
-    return { maxValue, maxCost };
+    return { maxValue, maxCost, maxDemand };
   }, [rawData]);
 
   useEffect(() => {
@@ -148,12 +152,20 @@ export default function App() {
     const totalCost = viewData.reduce((a, c) => a + (c.cost ?? 0), 0);
 
     const dailyTotals = new Map<string, { value: number; cost: number; date: Date }>();
+    // Peak demand is the single highest-kW interval over the view (when it hit).
+    let peakDemand = 0;
+    let peakDemandTs = viewData[0].timestamp;
+    let totalHours = 0;
     for (const d of viewData) {
       const date = new Date(d.timestamp * 1000);
       const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
       const existing = dailyTotals.get(dayKey);
       if (existing) { existing.value += d.value; existing.cost += d.cost ?? 0; }
       else { dailyTotals.set(dayKey, { value: d.value, cost: d.cost ?? 0, date: new Date(date.getFullYear(), date.getMonth(), date.getDate()) }); }
+
+      const demand = toDemandKW(d.value, d.duration);
+      if (demand > peakDemand) { peakDemand = demand; peakDemandTs = d.timestamp; }
+      totalHours += (d.duration ?? 3600) / 3600;
     }
 
     let peakDay = { value: 0, cost: 0, date: new Date() };
@@ -165,6 +177,10 @@ export default function App() {
     const numDays = dailyTotals.size;
     const avgDailyValue = numDays > 0 ? Math.round(totalValue / numDays) : 0;
     const avgDailyCost = numDays > 0 ? Math.round(totalCost / numDays) : 0;
+    // Average demand = total energy (Wh) over total hours, expressed in kW.
+    const avgDemand = totalHours > 0 ? (totalValue / totalHours) / 1000 : 0;
+
+    const peakDemandDateObj = new Date(peakDemandTs * 1000);
 
     return {
       total: formatEnergyValue(totalValue, energyUnit), totalCost: formatCost(totalCost),
@@ -173,6 +189,8 @@ export default function App() {
       peakDate: formatShortDate(peakDay.date), readings: viewData.length, numDays,
       range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`,
       effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`, unit: energyUnit,
+      peakDemand: formatDemandValue(peakDemand), avgDemand: formatDemandValue(avgDemand),
+      peakDemandDate: `${formatShortDate(peakDemandDateObj)}, ${peakDemandDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     };
   }, [viewData, energyUnit]);
 
@@ -190,21 +208,28 @@ export default function App() {
     return Math.ceil(max / magnitude) * magnitude;
   }, [dataExtents.maxCost]);
 
+  const yAxisMaxDemand = useMemo(() => {
+    const max = dataExtents.maxDemand;
+    if (!max) return 10;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
+    return Math.ceil(max / magnitude) * magnitude;
+  }, [dataExtents.maxDemand]);
+
   const currentAnalysisMax = useMemo(() => {
     if (analysisView === 'averages') {
       const data = analysisResults.averages;
       if (!data.length) return 0;
-      return Math.max(...data.map(d => (metricMode === 'energy' ? d.average : d.avgCost) || 0));
+      return Math.max(...data.map(d => (metricMode === 'energy' ? d.average : metricMode === 'demand' ? d.demand : d.avgCost) || 0));
     }
     const data = analysisResults.timeline;
     if (!data.length) return 0;
-    return Math.max(...data.map(d => (metricMode === 'energy' ? d.value : d.cost) || 0));
+    return Math.max(...data.map(d => (metricMode === 'energy' ? d.value : metricMode === 'demand' ? d.demand : d.cost) || 0));
   }, [analysisResults, analysisView, metricMode]);
 
   const analysisDomain = useMemo((): [number, number] => {
     if (autoZoom) return [0, Math.ceil(currentAnalysisMax * 1.1)];
-    return [0, metricMode === 'energy' ? yAxisMax : yAxisMaxCost];
-  }, [autoZoom, currentAnalysisMax, yAxisMax, yAxisMaxCost, metricMode]);
+    return [0, metricMode === 'energy' ? yAxisMax : metricMode === 'demand' ? yAxisMaxDemand : yAxisMaxCost];
+  }, [autoZoom, currentAnalysisMax, yAxisMax, yAxisMaxCost, yAxisMaxDemand, metricMode]);
 
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
@@ -268,8 +293,16 @@ export default function App() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} sub={stats.totalCost} />
                   <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
-                  <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} sub={stats.avgCost} />
-                  <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} sub={`${stats.peakDate} • ${stats.peakCost}`} />
+                  {metricMode === 'demand' ? (
+                    <StatCard icon={<Activity className="w-5 h-5 text-violet-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" sub={stats.avgCost} />
+                  ) : (
+                    <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} sub={stats.avgCost} />
+                  )}
+                  {metricMode === 'demand' ? (
+                    <StatCard icon={<Gauge className="w-5 h-5 text-violet-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" sub={stats.peakDemandDate} />
+                  ) : (
+                    <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} sub={`${stats.peakDate} • ${stats.peakCost}`} />
+                  )}
                 </div>
 
                 <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />

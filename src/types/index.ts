@@ -21,6 +21,7 @@ export interface DataPoint {
   timestamp: number;
   value: number;
   cost: number;  // Cost in micro-dollars (divide by 100000 for dollars)
+  demand?: number;  // Instantaneous demand in kW, derived from value / duration
   date?: string;
   time?: string;
   fullDate?: string;
@@ -39,7 +40,7 @@ export interface AnalysisFilters {
     hourEnd: number;
 }
 
-export type MetricMode = 'energy' | 'cost';
+export type MetricMode = 'energy' | 'cost' | 'demand';
 
 export const RESOLUTIONS: Record<string, { label: string; seconds: number }> = {
     RAW: { label: 'Raw Data', seconds: 0 },

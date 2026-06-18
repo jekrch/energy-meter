@@ -1,4 +1,4 @@
-import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters } from '../types';
+import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type MetricMode } from '../types';
 
 export interface ChartDescription {
     main: string;
@@ -15,7 +15,7 @@ function formatHourDisplay(h: number): string {
 export function buildChartDescription(
     analysisView: 'averages' | 'timeline',
     groupBy: 'dayOfWeek' | 'month' | 'hour',
-    metricMode: 'energy' | 'cost',
+    metricMode: MetricMode,
     filters: AnalysisFilters,
     tempFilter?: {
         isActive: boolean;
@@ -24,7 +24,7 @@ export function buildChartDescription(
         unit: 'C' | 'F';
     }
 ): ChartDescription {
-    const metric = metricMode === 'energy' ? 'energy' : 'cost';
+    const metric = metricMode === 'energy' ? 'energy' : metricMode === 'demand' ? 'peak demand' : 'cost';
     const groupLabels = { hour: 'hour', dayOfWeek: 'day of week', month: 'month' };
     const groupLabel = groupLabels[groupBy];
 

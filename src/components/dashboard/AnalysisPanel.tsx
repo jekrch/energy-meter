@@ -11,6 +11,7 @@ import { formatCostAxis } from '../../utils/formatters';
 import { buildChartDescription } from '../../utils/chartDescription';
 import type { MetricMode } from '../charts/MainChart';
 import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
+import { formatDemandAxis } from '../../utils/demandUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { useDebouncedValue } from '../../hooks/useDebounceValue';
 import { useDeferredLoading } from '../../hooks/useDeferredLoading';
@@ -82,13 +83,13 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const isTouchDevice = useTouchDevice();
     const { activeIndex, tooltipRef, chartContainerRef, handleChartClick } = useTooltipControl(isTouchDevice);
 
-    const chartColor = metricMode === 'energy' ? '#f59e0b' : '#10b981';
+    const chartColor = metricMode === 'energy' ? '#f59e0b' : metricMode === 'demand' ? '#8b5cf6' : '#10b981';
     const incompleteColor = '#64748b';
-    
+
     const yAxisFormatter = useCallback((val: number) => {
-        return metricMode === 'energy' 
-            ? formatEnergyAxis(val, energyUnit) 
-            : formatCostAxis(val);
+        if (metricMode === 'energy') return formatEnergyAxis(val, energyUnit);
+        if (metricMode === 'demand') return formatDemandAxis(val);
+        return formatCostAxis(val);
     }, [metricMode, energyUnit]);
 
     const tempBoundsDisplay = useMemo(() => {
@@ -177,18 +178,20 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 : categoryItems.filter(item => isPeriodComplete(item, viewRange.start!, viewRange.end!));
 
             if (completeItems.length === 0) {
-                return { ...avg, average: 0, avgCost: 0, count: 0, isIncomplete: true, temperature: undefined };
+                return { ...avg, average: 0, avgCost: 0, demand: 0, count: 0, isIncomplete: true, temperature: undefined };
             }
 
-            let sum = 0, costSum = 0, tempSum = 0, tempCount = 0;
+            let sum = 0, costSum = 0, demandSum = 0, tempSum = 0, tempCount = 0;
             for (const item of completeItems) {
                 sum += item.value;
                 costSum += item.cost;
+                demandSum += item.demand ?? 0;
                 if (item.temperature !== undefined) { tempSum += item.temperature; tempCount++; }
             }
 
             return {
                 ...avg, average: Math.round(sum / completeItems.length), avgCost: Math.round(costSum / completeItems.length),
+                demand: demandSum / completeItems.length,
                 count: completeItems.length, isIncomplete: false, temperature: tempCount > 0 ? tempSum / tempCount : undefined
             };
         });
@@ -204,22 +207,23 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const getTooltipData = useCallback((d: any): TooltipData | null => {
         const energyVal = analysisView === 'averages' ? d.average : d.value;
         const costVal = analysisView === 'averages' ? d.avgCost : d.cost;
+        const demandVal = d.demand;
         const periodName = groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours';
         const hasViewRange = viewRange?.start && viewRange?.end;
         const isPartial = !!(analysisView === 'timeline' && hasViewRange && !isPeriodComplete(d, viewRange.start!, viewRange.end!));
         const hasNoCompleteData = analysisView === 'averages' && (d.isIncomplete || d.count === 0);
-        
+
         return {
             label: analysisView === 'averages' ? d.label : d.fullDate,
-            energyValue: energyVal, costValue: costVal, temperature: d.temperature, count: d.count,
+            energyValue: energyVal, costValue: costVal, demandValue: demandVal, temperature: d.temperature, count: d.count,
             countLabel: analysisView === 'averages' ? `${d.count} complete ${periodName} averaged` : `${d.count?.toLocaleString()} readings`,
             isPartial, noCompleteData: hasNoCompleteData, periodName
         };
     }, [analysisView, groupBy, viewRange]);
 
     const dataKey = useMemo(() => {
-        if (analysisView === 'averages') return metricMode === 'energy' ? 'average' : 'avgCost';
-        return metricMode === 'energy' ? 'value' : 'cost';
+        if (analysisView === 'averages') return metricMode === 'energy' ? 'average' : metricMode === 'demand' ? 'demand' : 'avgCost';
+        return metricMode === 'energy' ? 'value' : metricMode === 'demand' ? 'demand' : 'cost';
     }, [analysisView, metricMode]);
 
     const getBarColor = useCallback((entry: any): string => {

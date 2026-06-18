@@ -16,6 +16,13 @@ const point = (timestamp: number, value: number, cost: number): DataPoint => ({
   cost,
 });
 
+const demandPoint = (timestamp: number, value: number, duration: number): DataPoint => ({
+  timestamp,
+  value,
+  cost: 0,
+  duration,
+});
+
 const HOUR_LABELS = HOURS.map(h => `${h}:00`);
 
 describe('aggregateBuckets', () => {
@@ -50,6 +57,18 @@ describe('aggregateBuckets', () => {
     const bucket = [...map.values()][0];
     expect(bucket.sum).toBe(40);
     expect(bucket.costSum).toBe(0);
+  });
+
+  it('tracks demandMax as the peak per-reading demand in a bucket', () => {
+    const ts = at(2024, 0, 1, 9);
+    // 15-min readings (×4): 1000→4kW, 2500→10kW (peak), 500→2kW
+    const data = [
+      demandPoint(ts, 1000, 900),
+      demandPoint(ts + 600, 2500, 900),
+      demandPoint(ts + 1200, 500, 900),
+    ];
+    const bucket = [...aggregateBuckets(data, 'hour').values()][0];
+    expect(bucket.demandMax).toBe(10);
   });
 });
 
@@ -86,6 +105,27 @@ describe('finalizeBuckets', () => {
     // every other weekday slot is empty
     const empty = averages.filter((_, i) => i !== mondayIdx);
     expect(empty.every(a => a.count === 0 && a.average === 0)).toBe(true);
+  });
+
+  it('averages each period\'s peak demand into the category slot (average-of-peaks)', () => {
+    // Two Mondays. Each day-period peaks at a different per-reading demand:
+    //   Mon 1: 1000 Wh @15min → 4 kW, plus 2000 Wh @15min → 8 kW (peak = 8)
+    //   Mon 2: 3000 Wh @15min → 12 kW (peak = 12)
+    // Average of the two peaks = (8 + 12) / 2 = 10 kW.
+    const mon1 = at(2024, 0, 1, 8);
+    const mon2 = at(2024, 0, 8, 8);
+    const map = aggregateBuckets(
+      [demandPoint(mon1, 1000, 900), demandPoint(mon1 + 600, 2000, 900), demandPoint(mon2, 3000, 900)],
+      'dayOfWeek',
+    );
+
+    const { averages, timeline } = finalizeBuckets(map, 7, DAYS_OF_WEEK);
+    const mondayIdx = new Date(mon1 * 1000).getDay();
+    expect(averages[mondayIdx].demand).toBe(10);
+
+    // Each timeline period carries its own peak.
+    const peaks = timeline.map(t => t.demand).sort((a, b) => a - b);
+    expect(peaks).toEqual([8, 12]);
   });
 
   it('produces one zeroed slot per group for an empty dataset', () => {

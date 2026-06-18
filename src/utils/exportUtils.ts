@@ -1,6 +1,7 @@
 import type { DataPoint } from '../types';
 import { DAYS_OF_WEEK, MONTHS } from '../types';
 import { type EnergyUnit, convertEnergy } from './energyUnits';
+import { toDemandKW } from './demandUnits';
 import { formatShortDate } from './formatters';
 import type { HourlyWeatherData } from '../utils/weatherData';
 import type { ExportGroupBy, RateUnitConfig } from '../components/export/exportConstants';
@@ -59,6 +60,7 @@ export interface AggBucket {
   label: string;
   energySum: number;    // Wh
   costSum: number;      // micro-dollars (hundred-thousandths of a dollar)
+  demandMax: number;    // peak demand (kW) within the bucket
   tempSum: number;
   tempCount: number;
   count: number;
@@ -161,6 +163,9 @@ export function buildRawRow(
       convertEnergy(point.value, energyUnit).toFixed(4),
     );
   }
+  if (enabledKeys.has('demand')) {
+    row.demand_kw = parseFloat(toDemandKW(point.value, point.duration).toFixed(3));
+  }
   if (enabledKeys.has('cost')) {
     row.cost_dollars = parseFloat((point.cost / 100_000).toFixed(4));
   }
@@ -193,6 +198,9 @@ export function buildAggRow(
     row[`energy_${energyUnit.toLowerCase()}`] = parseFloat(
       convertEnergy(bucket.energySum, energyUnit).toFixed(4),
     );
+  }
+  if (enabledKeys.has('demand')) {
+    row.peak_demand_kw = parseFloat(bucket.demandMax.toFixed(3));
   }
   if (enabledKeys.has('cost')) {
     row.cost_dollars = parseFloat((bucket.costSum / 100_000).toFixed(4));

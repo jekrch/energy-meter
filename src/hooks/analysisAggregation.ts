@@ -1,5 +1,6 @@
 import { type DataPoint, DAYS_OF_WEEK, MONTHS } from '../types';
 import { formatShortDate } from '../utils/formatters';
+import { toDemandKW } from '../utils/demandUnits';
 import type {
   TimelineBucket,
   AnalysisAverageResult,
@@ -56,15 +57,19 @@ export function accumulateBucket(
     periodEnd = periodStart + 3600 - 1;
   }
 
+  const demand = toDemandKW(d.value, d.duration);
+
   const existing = map.get(tlKey);
   if (existing) {
     existing.sum += d.value;
     existing.costSum += d.cost ?? 0;
+    if (demand > existing.demandMax) existing.demandMax = demand;
     existing.count += 1;
   } else {
     map.set(tlKey, {
       sum: d.value,
       costSum: d.cost ?? 0,
+      demandMax: demand,
       count: 1,
       timestamp: sortTs,
       label: tlLabel,
@@ -98,6 +103,7 @@ export function finalizeBuckets(
       timestamp: g.timestamp,
       value: g.sum,
       cost: g.costSum,
+      demand: g.demandMax,
       fullDate: g.label,
       count: g.count,
       categoryKey: g.categoryKey,
@@ -105,20 +111,22 @@ export function finalizeBuckets(
       periodEnd: g.periodEnd,
     }));
 
-  const categoryTotals: { values: number[]; costs: number[] }[] =
-    Array.from({ length: groupCount }, () => ({ values: [], costs: [] }));
+  const categoryTotals: { values: number[]; costs: number[]; demands: number[] }[] =
+    Array.from({ length: groupCount }, () => ({ values: [], costs: [], demands: [] }));
 
   for (const period of timelineMap.values()) {
     const cat = categoryTotals[period.categoryKey];
     if (cat) {
       cat.values.push(period.sum);
       cat.costs.push(period.costSum);
+      cat.demands.push(period.demandMax);
     }
   }
 
   const averages: AnalysisAverageResult[] = categoryTotals.map((group, idx) => {
     const valueCount = group.values.length;
     const costCount = group.costs.length;
+    const demandCount = group.demands.length;
 
     return {
       key: idx,
@@ -128,6 +136,10 @@ export function finalizeBuckets(
         : 0,
       avgCost: costCount > 0
         ? Math.round(group.costs.reduce((a, b) => a + b, 0) / costCount)
+        : 0,
+      // Average of each period's peak — the standard load-profile view.
+      demand: demandCount > 0
+        ? group.demands.reduce((a, b) => a + b, 0) / demandCount
         : 0,
       count: valueCount,
     };

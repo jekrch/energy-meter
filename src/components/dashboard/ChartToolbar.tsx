@@ -1,4 +1,4 @@
-import { DollarSign, Zap } from 'lucide-react';
+import { DollarSign, Zap, Gauge } from 'lucide-react';
 import { type MetricMode, RESOLUTIONS } from '../../types';
 import { type EnergyUnit, ENERGY_UNITS } from '../../utils/energyUnits';
 import { PillGroup, PillButton } from '../common/PillButton';
@@ -55,8 +55,23 @@ export function ChartToolbar({
           <Zap className="w-3.5 h-3.5" />
           <span className="hidden xs:inline">Energy</span>
         </PillButton>
+        <PillButton
+          active={metricMode === 'demand'}
+          onClick={() => setMetricMode('demand')}
+          activeClassName="bg-violet-500/15 text-violet-400 shadow-sm"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md"
+        >
+          <Gauge className="w-3.5 h-3.5" />
+          <span className="hidden xs:inline">Demand</span>
+        </PillButton>
 
       </PillGroup>
+
+      {metricMode === 'demand' && (
+        <PillGroup className="bg-slate-800/80 rounded-lg">
+          <span className="px-2 py-1.5 text-xs text-violet-400 font-medium">kW</span>
+        </PillGroup>
+      )}
 
       {metricMode === 'energy' && (
         <PillGroup className="bg-slate-800/80 rounded-lg">

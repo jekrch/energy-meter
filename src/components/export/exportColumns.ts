@@ -4,7 +4,7 @@ import type { ExportColumn, ExportGroupBy, RateUnit } from './exportConstants';
 // ─── Column ordering ────────────────────────────────────────────────────────
 
 /** Canonical display order for columns. Rate always comes last. */
-const COLUMN_ORDER = ['timestamp', 'date', 'time', 'value', 'cost', 'temperature', 'rate'];
+const COLUMN_ORDER = ['timestamp', 'date', 'time', 'value', 'demand', 'cost', 'temperature', 'rate'];
 
 function columnSortIndex(key: string): number {
   const idx = COLUMN_ORDER.indexOf(key);
@@ -27,6 +27,7 @@ export function buildDefaultColumns(
     { key: 'date', label: 'Date', enabled: true, category: 'core' },
     { key: 'time', label: 'Time', enabled: true, category: 'core' },
     { key: 'value', label: `Energy (${energyUnit})`, enabled: true, category: 'core' },
+    { key: 'demand', label: 'Demand (kW)', enabled: false, category: 'derived' },
     { key: 'cost', label: 'Cost ($)', enabled: true, category: 'core' },
   ];
   if (weatherAvailable) {
@@ -63,6 +64,7 @@ export function deriveEffectiveColumns(
     if (groupBy === 'none') return col;
     if (col.key === 'time') return { ...col, enabled: false };
     if (col.key === 'date') return { ...col, label: 'Period' };
+    if (col.key === 'demand') return { ...col, label: 'Peak Demand (kW)' };
     if (col.key === 'temperature') return { ...col, label: `Avg Temp (°${temperatureUnit})` };
     return col;
   });

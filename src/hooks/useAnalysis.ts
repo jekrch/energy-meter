@@ -9,6 +9,7 @@ export interface AnalysisAverageResult {
     label: string;
     average: number;
     avgCost: number;
+    demand: number;  // average of each period's peak demand (kW)
     count: number;
 }
 
@@ -16,6 +17,7 @@ export interface AnalysisTimelineResult {
     timestamp: number;
     value: number;
     cost: number;
+    demand: number;  // peak demand (kW) within the period
     fullDate: string;
     count: number;
     categoryKey: number;
@@ -33,6 +35,7 @@ export interface AnalysisResults {
 export interface TimelineBucket {
     sum: number;
     costSum: number;
+    demandMax: number;  // peak per-reading demand (kW) in this period
     count: number;
     timestamp: number;
     label: string;

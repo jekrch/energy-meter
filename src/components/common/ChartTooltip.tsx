@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatCost } from '../../utils/formatters';
 import { type EnergyUnit, formatEnergyValue } from '../../utils/energyUnits';
+import { formatDemandValue } from '../../utils/demandUnits';
 import type { MetricMode } from '../../types';
 const formatTemp = (temp: number, unit: 'C' | 'F') => {
     if (unit === 'F') return `${Math.round(temp * 9 / 5 + 32)}°F`;
@@ -11,6 +12,7 @@ export interface TooltipData {
     label: string;
     energyValue: number;
     costValue?: number;
+    demandValue?: number;
     temperature?: number;
     count?: number;
     countLabel?: string;
@@ -55,6 +57,7 @@ export const ChartTooltip = React.memo(function ChartTooltip({
     if (!data) return null;
 
     const hasCost = typeof data.costValue === 'number' && data.costValue > 0;
+    const hasDemand = typeof data.demandValue === 'number';
     const hasTemp = showWeather && typeof data.temperature === 'number';
 
     return (
@@ -77,6 +80,13 @@ export const ChartTooltip = React.memo(function ChartTooltip({
                         {formatEnergyValue(data.energyValue, energyUnit)}{' '}
                         <span className="text-xs text-slate-500 font-normal">{energyUnit}</span>
                     </p>
+
+                    {hasDemand && (
+                        <p className={`font-semibold mt-1 ${metricMode === 'demand' ? 'text-violet-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                            {formatDemandValue(data.demandValue!)}{' '}
+                            <span className="text-xs text-slate-500 font-normal">kW</span>
+                        </p>
+                    )}
 
                     {hasCost && (
                         <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>

@@ -5,6 +5,7 @@ import { Dropdown } from '../common/Dropdown';
 import { PillGroup, PillButton } from '../common/PillButton';
 import type { DataPoint } from '../../types';
 import { type EnergyUnit } from '../../utils/energyUnits';
+import { toDemandKW } from '../../utils/demandUnits';
 import { formatShortDate } from '../../utils/formatters';
 import type { HourlyWeatherData } from '../../utils/weatherData';
 
@@ -248,10 +249,12 @@ export const ExportModal = React.memo(function ExportModal({
             const point = data[i];
             const { key, timestamp, label } = getBucketKey(point.timestamp, groupBy);
 
+            const demand = toDemandKW(point.value, point.duration);
             const existing = buckets.get(key);
             if (existing) {
               existing.energySum += point.value;
               existing.costSum += point.cost;
+              if (demand > existing.demandMax) existing.demandMax = demand;
               existing.count++;
               if (weatherLookup) {
                 const temp = weatherLookup(point.timestamp);
@@ -271,6 +274,7 @@ export const ExportModal = React.memo(function ExportModal({
                 label,
                 energySum: point.value,
                 costSum: point.cost,
+                demandMax: demand,
                 tempSum,
                 tempCount,
                 count: 1,

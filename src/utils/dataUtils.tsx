@@ -1,6 +1,7 @@
 import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
+import { toDemandKW } from './demandUnits';
 
 const CHUNK_SIZE = 2000;
 
@@ -59,6 +60,7 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
           const dateObj = new Date(d.timestamp * 1000);
           result.push({
             ...d,
+            demand: toDemandKW(d.value, d.duration),
             date: formatShortDate(dateObj),
             time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             fullDate: `${formatShortDate(dateObj)}, ${dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -75,17 +77,21 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
         const interval = RESOLUTIONS[resolution].seconds;
         // Map<number> keeps the bucket key numeric — no string/number coercion
         // round-trip through Object.keys()/parseInt().
-        const groups = new Map<number, { value: number; cost: number }>();
+        // Energy/cost sum per bucket; demand takes the PEAK (max) per bucket —
+        // demand billing charges the single highest interval, never the sum.
+        const groups = new Map<number, { value: number; cost: number; demand: number }>();
 
         data.forEach(p => {
           const bucket = Math.floor(p.timestamp / interval) * interval;
           let group = groups.get(bucket);
           if (!group) {
-            group = { value: 0, cost: 0 };
+            group = { value: 0, cost: 0, demand: 0 };
             groups.set(bucket, group);
           }
           group.value += p.value;
           group.cost += p.cost;
+          const demand = toDemandKW(p.value, p.duration);
+          if (demand > group.demand) group.demand = demand;
         });
 
         const result = [...groups.entries()]
@@ -99,6 +105,7 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
               timestamp,
               value: agg.value,
               cost: agg.cost,
+              demand: agg.demand,
               date: dateStr,
               time: resolution === 'HOURLY' ? timeStr : '',
               fullDate: resolution === 'HOURLY' ? `${dateStr}, ${timeStr}` : dateStr
@@ -506,7 +513,8 @@ export const generateSampleData = (): DataPoint[] => {
     points.push({
       timestamp: time,
       value: finalValue,
-      cost: finalCost
+      cost: finalCost,
+      duration: 3600, // hourly intervals — makes demand (kW) derive correctly
     });
 
     time += 3600;
