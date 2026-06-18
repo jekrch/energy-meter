@@ -1,7 +1,8 @@
 # GB Energy Meter :zap:
+[![Version](https://img.shields.io/badge/version-2.1-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
 [![Test](https://github.com/jekrch/energy-meter/actions/workflows/test.yml/badge.svg)](https://github.com/jekrch/energy-meter/actions/workflows/test.yml)
 
-A web application for visualizing and analyzing energy consumption data from Green Button XML files. Built with React, TypeScript, and Vite.
+A web application for visualizing and analyzing energy consumption data from Green Button XML and CSV files. Built with React, TypeScript, and Vite.
 
 [gbmeter.com](https://gbmeter.com)
 
@@ -9,8 +10,9 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 ## Features
 
-- **Green Button XML Support** — Import energy data from utility providers using the standard Green Button format
+- **Green Button XML & CSV Support** — Import energy data from utility providers using the standard Green Button XML format, or from common CSV exports with auto-detected date/time, usage, and unit columns
 - **Interactive Charts** — Visualize consumption with zoomable, responsive area charts
+- **Peak Demand Metrics** — Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
 - **Multi-Resolution Views** — View data at raw, hourly, daily, or weekly aggregations
 - **Analysis Dashboard** — Analyze patterns by hour, day of week, or month with timeline and average views
 - **Guided Insights** — Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
