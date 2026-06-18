@@ -5,6 +5,10 @@
 //   fixtures/sample-single-block.xml        — plain consumption, no picker
 //   fixtures/sample-solar-net-metered.xml   — delivered + received (picker)
 //   fixtures/sample-hourly-plus-daily.xml   — hourly + overlapping daily summary (picker)
+//   fixtures/sample-noninterval-register-reads.xml
+//       — hourly delta usage split across per-day blocks (powerOfTenMultiplier
+//         = -3) PLUS cumulative daily register reads (accumulationBehaviour=1,
+//         duration 0). Exercises block-merging and cumulative-read filtering.
 //
 // Each IntervalReading uses raw Wh for <value> and 1/100000 of a dollar for
 // <cost>, matching standard ESPI conventions and the app's existing parser
@@ -84,30 +88,44 @@ const summarizeDaily = (hourly: Reading[]): Reading[] => {
 
 // --- XML emission helpers ---
 
+interface ReadingTypeOpts {
+  accumulationBehaviour?: number;
+  powerOfTenMultiplier?: number;
+  title?: string;
+}
+
 const readingTypeEntry = (
-  id: number,
+  id: number | string,
   flowDirection: number,
-  intervalLength: number
-): string => `  <entry>
+  intervalLength: number,
+  opts: ReadingTypeOpts = {}
+): string => {
+  const {
+    accumulationBehaviour = 4,
+    powerOfTenMultiplier = 0,
+    title = 'Energy Reading Type',
+  } = opts;
+  return `  <entry>
     <id>urn:uuid:readingtype-${id}</id>
     <link rel="self" href="/espi/1_1/resource/ReadingType/${id}"/>
     <link rel="up" href="/espi/1_1/resource/ReadingType"/>
-    <title>Energy Reading Type</title>
+    <title>${title}</title>
     <content>
       <ReadingType xmlns="http://naesb.org/espi">
-        <accumulationBehaviour>4</accumulationBehaviour>
+        <accumulationBehaviour>${accumulationBehaviour}</accumulationBehaviour>
         <commodity>1</commodity>
         <dataQualifier>12</dataQualifier>
         <flowDirection>${flowDirection}</flowDirection>
         <intervalLength>${intervalLength}</intervalLength>
         <kind>12</kind>
         <phase>769</phase>
-        <powerOfTenMultiplier>0</powerOfTenMultiplier>
+        <powerOfTenMultiplier>${powerOfTenMultiplier}</powerOfTenMultiplier>
         <timeAttribute>0</timeAttribute>
         <uom>72</uom>
       </ReadingType>
     </content>
   </entry>`;
+};
 
 const intervalBlockEntry = (
   blockId: number,
@@ -145,6 +163,57 @@ ${body}
       </IntervalBlock>
     </content>
   </entry>`;
+};
+
+// Like perBlockEntries, but mirrors exports that DON'T emit a rel="related"
+// link to the ReadingType — the block is tied to its ReadingType only through
+// the shared MeterReading/<resourceId> path segment. `resourceId` is a string
+// id (e.g. "S01207200100460") that also appears in the ReadingType self href.
+const perBlockEntriesByPath = (
+  startBlockId: number,
+  resourceId: string,
+  readings: Reading[],
+  perBlock: number
+): string[] => {
+  const SUB = '00000000-0000-0000-0000-000000000001';
+  const UP = '00000000-0000-0000-0000-0000000000a0';
+  const out: string[] = [];
+  let blockId = startBlockId;
+  for (let i = 0; i < readings.length; i += perBlock) {
+    const slice = readings.slice(i, i + perBlock);
+    const spanStart = slice[0].start;
+    const spanDuration = slice[slice.length - 1].start + slice[slice.length - 1].duration - spanStart;
+    const body = slice
+      .map(
+        (r) => `          <IntervalReading>
+            <timePeriod>
+              <duration>${r.duration}</duration>
+              <start>${r.start}</start>
+            </timePeriod>
+            <value>${r.value}</value>
+            <cost>${r.cost}</cost>
+          </IntervalReading>`
+      )
+      .join('\n');
+    const base = `/espi/1_1/resource/Subscription/${SUB}/UsagePoint/${UP}/MeterReading/${resourceId}/IntervalBlock`;
+    out.push(`  <entry>
+    <id>urn:uuid:intervalblock-${resourceId}-${blockId}</id>
+    <link rel="self" href="${base}/${String(blockId).padStart(6, '0')}"/>
+    <link rel="up" href="${base}"/>
+    <title>Meter Data</title>
+    <content>
+      <IntervalBlock xmlns="http://naesb.org/espi">
+        <interval>
+          <duration>${spanDuration}</duration>
+          <start>${spanStart}</start>
+        </interval>
+${body}
+      </IntervalBlock>
+    </content>
+  </entry>`);
+    blockId++;
+  }
+  return out;
 };
 
 const wrapFeed = (title: string, entries: string[]): string => `<?xml version="1.0" encoding="UTF-8"?>
@@ -213,4 +282,70 @@ const writeFixture = (name: string, xml: string) => {
   console.log(`  hourly total:  ${hK.toFixed(1)} kWh (168 readings)`);
   console.log(`  daily total:   ${hK.toFixed(1)} kWh (7 readings, same data)`);
   console.log(`  if summed (bug): ${(hK * 2).toFixed(1)} kWh`);
+}
+
+// 4. Non-interval export: hourly delta usage (scaled, split per day) + daily
+//    cumulative register reads. Mirrors a real utility "NonInterval" file that
+//    bundles the meter's running odometer alongside actual usage. The register
+//    reads must NOT be charted as consumption.
+{
+  const NI_DAYS = 5;
+  const POT = -3;            // ReadingType powerOfTenMultiplier
+  const SCALE = 1000;        // raw <value> = Wh × 10^-POT
+  const REGISTER_BASE_WH = 79_000_000; // ~79 MWh lifetime meter total
+
+  // Hourly delta usage, stored as raw values that scale back to Wh.
+  const delta: Reading[] = [];
+  for (let d = 0; d < NI_DAYS; d++) {
+    for (let h = 0; h < 24; h++) {
+      const wh = consumptionHour(h);
+      delta.push({
+        start: START_TS + d * DAY + h * HOUR,
+        duration: HOUR,
+        value: wh * SCALE,
+        cost: costOf(wh),
+      });
+    }
+  }
+
+  // Daily cumulative register reads: a rising odometer total, duration 0.
+  const register: Reading[] = [];
+  let cumWh = REGISTER_BASE_WH;
+  for (let d = 0; d < NI_DAYS; d++) {
+    const dayWh = delta
+      .slice(d * 24, (d + 1) * 24)
+      .reduce((a, r) => a + r.value / SCALE, 0);
+    cumWh += dayWh;
+    register.push({
+      start: START_TS + (d + 1) * DAY, // snapshot at end of day
+      duration: 0,
+      value: Math.round(cumWh * SCALE),
+      cost: 0,
+    });
+  }
+
+  // Realistic ESPI resource ids. The block→ReadingType link exists ONLY via
+  // the shared MeterReading/<id> path (no rel="related"), exactly like the
+  // real-world "NonInterval" export this fixture is modelled on.
+  const RID_INTERVAL = 'S01207200100460';
+  const RID_REGISTER = 'S0120720010011440';
+  const xml = wrapFeed('Non-Interval — Hourly Usage + Cumulative Register Reads', [
+    readingTypeEntry(RID_INTERVAL, 1, HOUR, {
+      accumulationBehaviour: 4, // deltaData → real usage
+      powerOfTenMultiplier: POT,
+      title: 'KWH Interval Data',
+    }),
+    readingTypeEntry(RID_REGISTER, 1, DAY, {
+      accumulationBehaviour: 1, // bulkQuantity → cumulative register reads
+      powerOfTenMultiplier: POT,
+      title: 'Daily KWH Reads',
+    }),
+    ...perBlockEntriesByPath(1, RID_INTERVAL, delta, 24),     // one block per day
+    ...perBlockEntriesByPath(100, RID_REGISTER, register, 1), // one block per register read
+  ]);
+  writeFixture('sample-noninterval-register-reads.xml', xml);
+  const usageKwh = delta.reduce((a, r) => a + r.value / SCALE, 0) / 1000;
+  console.log(`  hourly usage: ${usageKwh.toFixed(1)} kWh (${delta.length} readings, ${NI_DAYS} blocks)`);
+  console.log(`  register reads: ${register.length} cumulative snapshots (dropped as usage)`);
+  console.log(`  final odometer: ${(register[register.length - 1].value / SCALE / 1000).toFixed(1)} kWh`);
 }

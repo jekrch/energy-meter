@@ -536,6 +536,145 @@ describe('parseGreenButtonXML — fixtures', () => {
     expect(hourly.data.length).toBe(168);
     expect(daily.data.length).toBe(7);
   });
+
+  it('merges per-day blocks and drops cumulative register reads (non-interval export)', () => {
+    const { blocks } = parseGreenButtonXML(loadFixture('sample-noninterval-register-reads.xml'));
+
+    // 5 per-day interval blocks merge into one usage series; the 5 cumulative
+    // register-read blocks are dropped, so no picker and no odometer values.
+    expect(blocks.length).toBe(1);
+    const block = blocks[0];
+    expect(block.meta.isCumulative).toBe(false);
+    expect(block.meta.accumulationBehaviour).toBe(4);
+    expect(block.data.length).toBe(120); // 5 days × 24 hours, merged
+    expect(block.meta.intervalLength).toBe(3600);
+    expect(block.meta.powerOfTenMultiplier).toBe(-3);
+
+    // The block links to its ReadingType only through the shared
+    // MeterReading/<id> path (no rel="related"). If that match fails the
+    // ReadingType is lost: flow shows "Unknown flow" and the ×10^-3 multiplier
+    // isn't applied, so values balloon to MWh — exactly the reported bug.
+    expect(block.meta.flowDirection).toBe(1);
+    expect(block.meta.flowDirectionLabel).toContain('Forward');
+    const maxValue = Math.max(...block.data.map(d => d.value));
+    expect(maxValue).toBeLessThan(10000); // Wh-scale, not MWh
+  });
+});
+
+describe('parseGreenButtonXML — cumulative register reads', () => {
+  // A ReadingType + IntervalBlock pair, parameterised so tests can dial in
+  // accumulationBehaviour, durations and values.
+  const buildXML = (
+    series: { accumulationBehaviour: number; readings: { start: number; duration: number; value: number }[] }[]
+  ): string => {
+    const entries = series.map((s, i) => {
+      const rtId = i + 1;
+      const rt = `
+        <entry>
+          <link rel="self" href="/ReadingType/${rtId}"/>
+          <content>
+            <ReadingType xmlns="http://naesb.org/espi">
+              <accumulationBehaviour>${s.accumulationBehaviour}</accumulationBehaviour>
+              <flowDirection>1</flowDirection>
+              <uom>72</uom>
+              <powerOfTenMultiplier>0</powerOfTenMultiplier>
+            </ReadingType>
+          </content>
+        </entry>`;
+      const reads = s.readings.map(r => `
+              <IntervalReading>
+                <timePeriod><start>${r.start}</start><duration>${r.duration}</duration></timePeriod>
+                <value>${r.value}</value>
+                <cost>0</cost>
+              </IntervalReading>`).join('');
+      const block = `
+        <entry>
+          <link rel="related" href="/ReadingType/${rtId}"/>
+          <content>
+            <IntervalBlock xmlns="http://naesb.org/espi">${reads}
+            </IntervalBlock>
+          </content>
+        </entry>`;
+      return rt + block;
+    }).join('');
+    return `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">${entries}</feed>`;
+  };
+
+  const DAY = 86400;
+
+  it('drops the cumulative series when real interval usage is present', () => {
+    const xml = buildXML([
+      { accumulationBehaviour: 4, readings: [
+        { start: 1704067200, duration: 3600, value: 1000 },
+        { start: 1704070800, duration: 3600, value: 1200 },
+      ] },
+      { accumulationBehaviour: 1, readings: [
+        { start: 1704067200, duration: 0, value: 50000000 },
+        { start: 1704153600, duration: 0, value: 50072000 },
+      ] },
+    ]);
+
+    const { blocks } = parseGreenButtonXML(xml);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].meta.accumulationBehaviour).toBe(4);
+    expect(blocks[0].meta.isCumulative).toBe(false);
+    expect(blocks[0].data.length).toBe(2);
+    expect(blocks[0].meta.totalValue).toBe(2200);
+  });
+
+  it('flags cumulative reads via the duration-0 heuristic even without accumulationBehaviour', () => {
+    // No accumulationBehaviour given (left undefined); all durations 0.
+    const xml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <entry><link rel="related" href="/ReadingType/1"/><content>
+        <IntervalBlock xmlns="http://naesb.org/espi">
+          <IntervalReading><timePeriod><start>1704067200</start><duration>0</duration></timePeriod><value>50000000</value></IntervalReading>
+          <IntervalReading><timePeriod><start>1704153600</start><duration>0</duration></timePeriod><value>50072000</value></IntervalReading>
+        </IntervalBlock>
+      </content></entry>
+      <entry><link rel="related" href="/ReadingType/2"/><content>
+        <IntervalBlock xmlns="http://naesb.org/espi">
+          <IntervalReading><timePeriod><start>1704067200</start><duration>3600</duration></timePeriod><value>1000</value></IntervalReading>
+          <IntervalReading><timePeriod><start>1704070800</start><duration>3600</duration></timePeriod><value>1200</value></IntervalReading>
+        </IntervalBlock>
+      </content></entry>
+    </feed>`;
+
+    const { blocks } = parseGreenButtonXML(xml);
+    // Only the interval (3600s) series survives.
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].meta.intervalLength).toBe(3600);
+  });
+
+  it('derives usage by differencing reads when the file is cumulative-only', () => {
+    const xml = buildXML([
+      { accumulationBehaviour: 1, readings: [
+        { start: 1704067200, duration: 0, value: 100 },
+        { start: 1704067200 + DAY, duration: 0, value: 130 },
+        { start: 1704067200 + 2 * DAY, duration: 0, value: 175 },
+      ] },
+    ]);
+
+    const { blocks } = parseGreenButtonXML(xml);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].meta.isCumulative).toBe(false);
+    expect(blocks[0].data.map(d => d.value)).toEqual([30, 45]); // diffs of the odometer
+    expect(blocks[0].data[0].duration).toBe(DAY);
+    expect(blocks[0].meta.totalValue).toBe(75);
+  });
+
+  it('skips negative deltas (meter reset / rollover) when differencing', () => {
+    const xml = buildXML([
+      { accumulationBehaviour: 1, readings: [
+        { start: 1704067200, duration: 0, value: 100 },
+        { start: 1704067200 + DAY, duration: 0, value: 130 },
+        { start: 1704067200 + 2 * DAY, duration: 0, value: 50 },  // reset
+        { start: 1704067200 + 3 * DAY, duration: 0, value: 90 },
+      ] },
+    ]);
+
+    const { blocks } = parseGreenButtonXML(xml);
+    expect(blocks[0].data.map(d => d.value)).toEqual([30, 40]); // -80 skipped
+  });
 });
 
 describe('parseGreenButtonXML — fallback paths', () => {

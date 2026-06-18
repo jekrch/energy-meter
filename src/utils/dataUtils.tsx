@@ -183,6 +183,12 @@ export interface IntervalBlockMeta {
   readingCount: number;
   totalValue: number;
   totalCost: number;
+  // ESPI accumulationBehaviour from the ReadingType. 1/2/3 are cumulative
+  // "register reads" (a running meter total, like an odometer); 4 is deltaData
+  // (per-interval consumption). See CUMULATIVE_ACCUMULATION below.
+  accumulationBehaviour?: number;
+  // True when the readings are cumulative register reads rather than usage.
+  isCumulative: boolean;
 }
 
 export interface ParsedBlock {
@@ -200,7 +206,14 @@ interface ReadingTypeMeta {
   powerOfTenMultiplier: number;
   commodity?: number;
   currency?: number;
+  accumulationBehaviour?: number;
 }
+
+// ESPI accumulationBehaviour codes that denote a cumulative running total
+// (register / "odometer" reads) rather than per-interval usage:
+//   1 bulkQuantity, 2 continuousCumulative, 3 cumulative.
+// deltaData (4) and summation (9) are real interval usage.
+const CUMULATIVE_ACCUMULATION = new Set([1, 2, 3]);
 
 const ns = (root: ParentNode, name: string): Element[] => {
   const r = root as Element;
@@ -224,6 +237,7 @@ const parseReadingType = (rt: Element): ReadingTypeMeta => ({
   powerOfTenMultiplier: parseIntNode(firstNs(rt, 'powerOfTenMultiplier')) ?? 0,
   commodity: parseIntNode(firstNs(rt, 'commodity')),
   currency: parseIntNode(firstNs(rt, 'currency')),
+  accumulationBehaviour: parseIntNode(firstNs(rt, 'accumulationBehaviour')),
 });
 
 const readingsToBlock = (
@@ -256,6 +270,15 @@ const readingsToBlock = (
   let totalCost = 0;
   for (const d of data) { totalValue += d.value; totalCost += d.cost; }
 
+  // Cumulative register reads (a running meter total) must not be charted as
+  // per-interval usage. Trust the ReadingType's accumulationBehaviour when it
+  // says so; otherwise fall back to the structural tell — a multi-reading block
+  // where every reading has duration 0 (snapshots, not spans of time).
+  const ab = rt?.accumulationBehaviour;
+  const isCumulative =
+    (ab !== undefined && CUMULATIVE_ACCUMULATION.has(ab)) ||
+    (data.length > 1 && data.every((d) => d.duration === 0));
+
   return {
     meta: {
       id,
@@ -277,6 +300,48 @@ const readingsToBlock = (
       readingCount: data.length,
       totalValue,
       totalCost,
+      accumulationBehaviour: ab,
+      isCumulative,
+    },
+    data,
+  };
+};
+
+// Convert a cumulative register-read series (odometer totals) into per-period
+// usage by differencing consecutive reads. Used only when a file contains
+// *nothing but* cumulative data — otherwise the cumulative series is dropped in
+// favour of the real interval block. Negative deltas (meter reset/rollover) are
+// skipped rather than charted as a huge spike.
+const cumulativeToDelta = (block: ParsedBlock): ParsedBlock => {
+  const src = block.data;
+  const data: DataPoint[] = [];
+  for (let i = 1; i < src.length; i++) {
+    const delta = src[i].value - src[i - 1].value;
+    if (delta < 0) continue;
+    data.push({
+      timestamp: src[i].timestamp,
+      value: delta,
+      cost: src[i].cost,
+      duration: src[i].timestamp - src[i - 1].timestamp,
+    });
+  }
+
+  let totalValue = 0;
+  let totalCost = 0;
+  for (const d of data) { totalValue += d.value; totalCost += d.cost; }
+  const first = data[0];
+  const last = data[data.length - 1];
+
+  return {
+    meta: {
+      ...block.meta,
+      isCumulative: false,
+      intervalLength: first?.duration,
+      startTimestamp: first?.timestamp ?? block.meta.startTimestamp,
+      endTimestamp: last?.timestamp ?? block.meta.endTimestamp,
+      readingCount: data.length,
+      totalValue,
+      totalCost,
     },
     data,
   };
@@ -292,22 +357,24 @@ export const parseGreenButtonXML = (xmlText: string): ParsedGreenButton => {
     }
 
     // First pass: walk atom <entry> elements and split ReadingTypes from
-    // IntervalBlocks. IntervalBlock entries reference their ReadingType via
-    // a <link rel="related"> pointing at the ReadingType entry's self href.
+    // IntervalBlocks. An IntervalBlock is tied to its ReadingType in one of two
+    // ways: a <link rel="related"> pointing at the ReadingType's self href, or
+    // (commonly) only through a shared MeterReading/<resourceId> path segment
+    // in the block's own self/up links. We keep ALL of a block's hrefs so both
+    // linkage styles can be resolved later.
     const readingTypes = new Map<string, ReadingTypeMeta>();
-    const rawBlocks: { ib: Element; relatedHrefs: string[] }[] = [];
+    const rawBlocks: { ib: Element; hrefs: string[] }[] = [];
 
     const entries = ns(xmlDoc, 'entry');
     for (const entry of entries) {
       const links = ns(entry, 'link');
       let selfHref: string | undefined;
-      const relatedHrefs: string[] = [];
+      const hrefs: string[] = [];
       for (const link of links) {
-        const rel = link.getAttribute('rel');
         const href = link.getAttribute('href');
         if (!href) continue;
-        if (rel === 'self') selfHref = href;
-        else if (rel === 'related') relatedHrefs.push(href);
+        hrefs.push(href);
+        if (link.getAttribute('rel') === 'self') selfHref = href;
       }
 
       const content = firstNs(entry, 'content');
@@ -320,14 +387,14 @@ export const parseGreenButtonXML = (xmlText: string): ParsedGreenButton => {
       }
 
       for (const ib of ns(content, 'IntervalBlock')) {
-        rawBlocks.push({ ib, relatedHrefs });
+        rawBlocks.push({ ib, hrefs });
       }
     }
 
     // Fallback: some exports have IntervalBlocks outside of an entry wrapper.
     if (rawBlocks.length === 0) {
       for (const ib of ns(xmlDoc, 'IntervalBlock')) {
-        rawBlocks.push({ ib, relatedHrefs: [] });
+        rawBlocks.push({ ib, hrefs: [] });
       }
     }
 
@@ -341,26 +408,75 @@ export const parseGreenButtonXML = (xmlText: string): ParsedGreenButton => {
       return { blocks: [readingsToBlock(readings, soleRt, 'block-0')] };
     }
 
-    const matchReadingType = (relatedHrefs: string[]): ReadingTypeMeta | undefined => {
-      for (const href of relatedHrefs) {
-        const direct = readingTypes.get(href);
-        if (direct) return direct;
-        for (const [key, meta] of readingTypes) {
-          if (href.includes(key) || key.includes(href)) return meta;
-        }
-      }
-      // If only one ReadingType exists in the file, assume it applies.
-      if (readingTypes.size === 1) return readingTypes.values().next().value as ReadingTypeMeta;
-      return undefined;
+    // The ReadingType resource id is the last path segment of its self href,
+    // e.g. ".../ReadingType/S01207200100460" → "S01207200100460".
+    const readingTypeId = (href: string): string | undefined => {
+      const marker = '/ReadingType/';
+      const i = href.lastIndexOf(marker);
+      return i === -1 ? undefined : href.slice(i + marker.length).split('/')[0];
     };
 
-    const blocks: ParsedBlock[] = [];
-    rawBlocks.forEach(({ ib, relatedHrefs }, idx) => {
+    // Resolve a block's ReadingType and return a stable key for it, so blocks
+    // that share a ReadingType can be merged. A single Green Button file often
+    // splits one logical series into many per-day IntervalBlocks; without
+    // merging, a one-month export shows up as 30+ separate "blocks".
+    const resolveReadingType = (
+      hrefs: string[],
+      blockIdx: number
+    ): { rt: ReadingTypeMeta | undefined; key: string } => {
+      // 1) Direct/substring match — files that link via <link rel="related">
+      //    to the ReadingType's self href.
+      for (const href of hrefs) {
+        const direct = readingTypes.get(href);
+        if (direct) return { rt: direct, key: href };
+        for (const [key, meta] of readingTypes) {
+          if (href.includes(key) || key.includes(href)) return { rt: meta, key };
+        }
+      }
+      // 2) Shared-id match — files that only connect a block to its ReadingType
+      //    through a MeterReading/<resourceId> path segment in the block's own
+      //    self/up links (no rel="related" to the ReadingType at all). Compare
+      //    on whole path segments to avoid one id being a substring of another.
+      for (const [key, meta] of readingTypes) {
+        const id = readingTypeId(key);
+        if (!id) continue;
+        for (const href of hrefs) {
+          if (href.split('/').includes(id)) return { rt: meta, key };
+        }
+      }
+      // 3) If only one ReadingType exists in the file, assume it applies.
+      if (readingTypes.size === 1) {
+        const [key, meta] = readingTypes.entries().next().value as [string, ReadingTypeMeta];
+        return { rt: meta, key };
+      }
+      // No match — keep this block on its own.
+      return { rt: undefined, key: `__unmatched-${blockIdx}` };
+    };
+
+    const groups = new Map<string, { readings: Element[]; rt: ReadingTypeMeta | undefined }>();
+    rawBlocks.forEach(({ ib, hrefs }, idx) => {
       const readings = ns(ib, 'IntervalReading');
       if (!readings.length) return;
-      const rt = matchReadingType(relatedHrefs);
-      blocks.push(readingsToBlock(readings, rt, `block-${idx}`));
+      const { rt, key } = resolveReadingType(hrefs, idx);
+      const existing = groups.get(key);
+      if (existing) existing.readings.push(...readings);
+      else groups.set(key, { readings: [...readings], rt });
     });
+
+    let blocks = [...groups.values()].map((g, i) =>
+      readingsToBlock(g.readings, g.rt, `block-${i}`)
+    );
+
+    if (blocks.length === 0) throw new Error('No IntervalReading data found.');
+
+    // Separate real interval usage from cumulative register reads. When usage
+    // is present, drop the cumulative "odometer" series so it can't be charted
+    // as consumption. If the file is cumulative-only, derive usage by
+    // differencing consecutive reads instead of showing a meaningless total.
+    const intervalBlocks = blocks.filter((b) => !b.meta.isCumulative);
+    blocks = intervalBlocks.length > 0
+      ? intervalBlocks
+      : blocks.map(cumulativeToDelta).filter((b) => b.data.length > 0);
 
     if (blocks.length === 0) throw new Error('No IntervalReading data found.');
 
