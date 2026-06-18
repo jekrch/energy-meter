@@ -698,6 +698,7 @@ export const parseGreenButtonCsv = (csvText: string): ParsedGreenButton => {
         readingCount: data.length,
         totalValue,
         totalCost,
+        isCumulative: false,
       },
       data,
     }],
