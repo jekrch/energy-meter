@@ -113,6 +113,7 @@ export const MainChart = React.memo(function MainChart({
                         data={chartDataWithWeather}
                         margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
                         onClick={handleChartClick}
+                        stackOffset="sign"
                     >
                         <defs>
                             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">

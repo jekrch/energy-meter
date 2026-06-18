@@ -1,3 +1,4 @@
+import Papa from 'papaparse';
 import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
@@ -484,6 +485,231 @@ export const parseGreenButtonXML = (xmlText: string): ParsedGreenButton => {
   } catch (err) {
     throw new Error(err instanceof Error ? err.message : 'XML Parsing Failed');
   }
+};
+
+// Green Button CSV Parser
+//
+// Unlike the XML format, there is no single canonical Green Button CSV. The
+// official Green Button Alliance XSLT emits a metadata-heavy report with
+// Start/End/Usage/Cost columns, while individual utilities ship flat exports
+// such as `Meter Number,Date,Time,Duration,Consumption,Generation,Net`. Rather
+// than hard-code one provider's column order, this parser locates the header
+// row by name and maps columns by synonym, so it tolerates reordered, renamed,
+// or extra columns and skips any preamble/metadata lines above the table.
+//
+// Values are normalized to the app's internal unit (Wh) and the result is
+// wrapped in the same ParsedGreenButton/ParsedBlock shape as the XML parser so
+// it flows through the existing single/multi-block upload pipeline unchanged.
+
+// Normalize a header cell for matching: strip quotes/whitespace, lowercase.
+const normHeader = (s: string): string =>
+  s.replace(/^"|"$/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Parse a numeric cell, tolerating thousands separators, currency symbols and
+// surrounding quotes. Returns null when the cell holds no number.
+const parseNumericCell = (raw: string | undefined): number | null => {
+  if (raw == null) return null;
+  const cleaned = raw.replace(/[^0-9eE.+-]/g, '');
+  if (!cleaned) return null;
+  const n = parseFloat(cleaned);
+  return Number.isNaN(n) ? null : n;
+};
+
+// Parse a timestamp cell into epoch seconds. Accepts epoch seconds/millis, ISO
+// 8601, and common locale strings like "2/1/2026 12:00 AM".
+const parseCsvTimestamp = (raw: string | undefined): number | null => {
+  if (!raw) return null;
+  const s = raw.replace(/^"|"$/g, '').trim();
+  if (!s) return null;
+  if (/^\d{13}$/.test(s)) return Math.floor(parseInt(s, 10) / 1000);
+  if (/^\d{10}$/.test(s)) return parseInt(s, 10);
+  const ms = Date.parse(s);
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
+};
+
+// Convert a value column to Wh based on the unit named in its header.
+// Defaults to kWh (the prevailing unit in utility CSV exports) when ambiguous.
+const csvUnitScaleToWh = (header: string): number => {
+  const h = normHeader(header);
+  if (/mwh|megawatt/.test(h)) return 1_000_000;
+  if (/kwh|kilowatt/.test(h)) return 1000;
+  if (/\bwh\b|watt-?hour/.test(h)) return 1;
+  return 1000;
+};
+
+interface CsvColumnMap {
+  resolveTimestamp: (row: string[]) => number | null;
+  resolveValue: (row: string[]) => number | null; // already scaled to Wh
+  resolveCost: (row: string[]) => number;          // micro-dollars
+  resolveEnd: (row: string[]) => number | null;    // epoch seconds, when present
+  isNet: boolean;
+}
+
+// Inspect a candidate header row and, if it names a usable timestamp column and
+// value column, return a set of accessors. Returns null otherwise so the caller
+// can keep scanning for the real header.
+const mapCsvColumns = (headerRow: string[]): CsvColumnMap | null => {
+  const h = headerRow.map(normHeader);
+  const find = (pred: (x: string) => boolean) => h.findIndex(pred);
+
+  // --- timestamp ---
+  const dateIdx = find(x => x === 'date' || x === 'start date' || x === 'reading date');
+  const timeIdx = find(x => x === 'time' || x === 'start time');
+  const startIdx = find(x =>
+    x.includes('start') || x === 'timestamp' || x.includes('date/time') ||
+    x.includes('date time') || x.includes('period starting') || x.includes('interval start') ||
+    (x.includes('date') && x.includes('time')));
+  const endIdx = find(x => x.includes('end'));
+
+  let resolveTimestamp: (row: string[]) => number | null;
+  if (dateIdx !== -1 && timeIdx !== -1) {
+    resolveTimestamp = row => parseCsvTimestamp(`${row[dateIdx] ?? ''} ${row[timeIdx] ?? ''}`);
+  } else if (startIdx !== -1) {
+    resolveTimestamp = row => parseCsvTimestamp(row[startIdx]);
+  } else if (dateIdx !== -1) {
+    resolveTimestamp = row => parseCsvTimestamp(row[dateIdx]);
+  } else {
+    return null;
+  }
+
+  // --- value (prefer net, else consumption-minus-generation, else gross) ---
+  const netIdx = find(x => x.includes('net'));
+  const consumptionIdx = find(x =>
+    x.includes('consumption') || x.includes('usage') || x === 'value' ||
+    (x.includes('energy') && !x.includes('generation')));
+  const genIdx = find(x =>
+    x.includes('generation') || x.includes('produced') || x.includes('export') || x.includes('received'));
+
+  let unitHeaderIdx: number;
+  let resolveRaw: (row: string[]) => number | null;
+  let isNet = false;
+  if (netIdx !== -1) {
+    unitHeaderIdx = netIdx;
+    isNet = true;
+    resolveRaw = row => parseNumericCell(row[netIdx]);
+  } else if (consumptionIdx !== -1 && genIdx !== -1) {
+    unitHeaderIdx = consumptionIdx;
+    isNet = true;
+    resolveRaw = row => {
+      const c = parseNumericCell(row[consumptionIdx]);
+      const g = parseNumericCell(row[genIdx]);
+      if (c === null && g === null) return null;
+      return (c ?? 0) - (g ?? 0);
+    };
+  } else if (consumptionIdx !== -1) {
+    unitHeaderIdx = consumptionIdx;
+    resolveRaw = row => parseNumericCell(row[consumptionIdx]);
+  } else {
+    return null;
+  }
+
+  const scale = csvUnitScaleToWh(headerRow[unitHeaderIdx] ?? '');
+  const costIdx = find(x => x.includes('cost') || x.includes('charge') || x.includes('amount') || x.includes('$'));
+
+  return {
+    resolveTimestamp,
+    resolveValue: row => {
+      const v = resolveRaw(row);
+      return v === null ? null : Math.round(v * scale);
+    },
+    // ESPI/Green Button cost is expressed in 10^-5 of the currency, matching
+    // DataPoint.cost ("micro-dollars"); dollars * 100000 restores that unit.
+    resolveCost: costIdx === -1
+      ? () => 0
+      : row => {
+          const dollars = parseNumericCell(row[costIdx]);
+          return dollars === null ? 0 : Math.round(dollars * 100000);
+        },
+    resolveEnd: endIdx === -1 || endIdx === startIdx ? () => null : row => parseCsvTimestamp(row[endIdx]),
+    isNet,
+  };
+};
+
+// Median gap between consecutive readings, used as the interval length when the
+// CSV has no explicit end/duration column.
+const inferIntervalSeconds = (sorted: DataPoint[]): number | undefined => {
+  if (sorted.length < 2) return undefined;
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i].timestamp - sorted[i - 1].timestamp);
+  gaps.sort((a, b) => a - b);
+  const mid = gaps[Math.floor(gaps.length / 2)];
+  return mid > 0 ? mid : undefined;
+};
+
+export const parseGreenButtonCsv = (csvText: string): ParsedGreenButton => {
+  const parsed = Papa.parse<string[]>(csvText, { skipEmptyLines: 'greedy' });
+  const rows = parsed.data.filter(r => r.length > 1);
+  if (!rows.length) throw new Error('Invalid CSV: no data rows found.');
+
+  // Find the first row that looks like a usable header (names a timestamp and a
+  // value column), skipping any leading metadata/banner lines.
+  let headerIdx = -1;
+  let cols: CsvColumnMap | null = null;
+  for (let i = 0; i < rows.length; i++) {
+    const map = mapCsvColumns(rows[i]);
+    if (map) { headerIdx = i; cols = map; break; }
+  }
+  if (!cols) {
+    throw new Error('Invalid CSV: could not find a header with recognizable date/time and usage columns.');
+  }
+
+  const data: DataPoint[] = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const timestamp = cols.resolveTimestamp(row);
+    if (timestamp === null) continue;
+    const value = cols.resolveValue(row);
+    if (value === null) continue;
+    const end = cols.resolveEnd(row);
+    data.push({
+      timestamp,
+      value,
+      cost: cols.resolveCost(row),
+      duration: end !== null ? end - timestamp : undefined,
+    });
+  }
+  if (!data.length) throw new Error('Invalid CSV: no valid readings found below the header row.');
+
+  data.sort((a, b) => a.timestamp - b.timestamp);
+
+  const inferred = inferIntervalSeconds(data);
+  if (inferred !== undefined) {
+    for (const d of data) if (d.duration == null) d.duration = inferred;
+  }
+
+  const first = data[0];
+  const last = data[data.length - 1];
+  let totalValue = 0;
+  let totalCost = 0;
+  for (const d of data) { totalValue += d.value; totalCost += d.cost; }
+
+  return {
+    blocks: [{
+      meta: {
+        id: 'csv-0',
+        flowDirection: cols.isNet ? 4 : 1,
+        flowDirectionLabel: cols.isNet ? FLOW_DIRECTION_LABELS[4] : FLOW_DIRECTION_LABELS[1],
+        uomLabel: 'Wh',
+        powerOfTenMultiplier: 0,
+        commodityLabel: 'Electricity',
+        intervalLength: first?.duration,
+        startTimestamp: first?.timestamp ?? 0,
+        endTimestamp: last?.timestamp ?? 0,
+        readingCount: data.length,
+        totalValue,
+        totalCost,
+      },
+      data,
+    }],
+  };
+};
+
+// Dispatch an uploaded Green Button file to the XML or CSV parser based on its
+// leading bytes.
+export const parseGreenButtonFile = (textData: string): ParsedGreenButton => {
+  const head = textData.trimStart();
+  const isXml = head.startsWith('<');
+  return isXml ? parseGreenButtonXML(textData) : parseGreenButtonCsv(textData);
 };
 
 // Mock Data Generator - realistic energy patterns with stepped rate increases

@@ -41,9 +41,9 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                     <label className="relative cursor-pointer group">
                         <div className="w-full bg-emerald-600 text-white font-medium py-3 px-6 rounded-lg shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2">
                             <FileText className="w-4 h-4" />
-                            {loading ? 'Processing...' : 'Choose XML File'}
+                            {loading ? 'Processing...' : 'Choose XML or CSV File'}
                         </div>
-                        <input type="file" accept=".xml" onChange={onUpload} className="hidden" disabled={loading} />
+                        <input type="file" accept=".xml,.csv" onChange={onUpload} className="hidden" disabled={loading} />
                     </label>
 
                     {/* Demo section with friendly nudge */}

@@ -6,6 +6,8 @@ import {
   downsampleLTTB,
   processDataAsync,
   parseGreenButtonXML,
+  parseGreenButtonCsv,
+  parseGreenButtonFile,
   createBrushData,
   detectRateChanges,
   formatRate
@@ -413,6 +415,74 @@ describe('parseGreenButtonXML', () => {
     // value 2 * 10^3 = 2000
     expect(blocks[0].data[0].value).toBe(2000);
     expect(blocks[0].meta.powerOfTenMultiplier).toBe(3);
+  });
+});
+
+describe('parseGreenButtonCsv', () => {
+  it('parses a flat utility CSV with a preamble line, quoted fields and net column', () => {
+    const { blocks } = parseGreenButtonCsv(loadFixture('sample-csv-net-metered.csv'));
+    expect(blocks.length).toBe(1);
+    const { data, meta } = blocks[0];
+    expect(data.length).toBe(5);
+    // 0.5 kWh -> 500 Wh; net export rows go negative
+    expect(data[0].value).toBe(500);
+    expect(data.some(d => d.value < 0)).toBe(true);
+    expect(meta.readingCount).toBe(5);
+    expect(meta.flowDirectionLabel).toBe('Net');
+    // 60-minute readings -> 3600s interval inferred from timestamps
+    expect(meta.intervalLength).toBe(3600);
+  });
+
+  it('sorts readings by timestamp', () => {
+    const { blocks } = parseGreenButtonCsv(loadFixture('sample-csv-net-metered.csv'));
+    const ts = blocks[0].data.map(d => d.timestamp);
+    expect(ts).toEqual([...ts].sort((a, b) => a - b));
+  });
+
+  it('is column-order independent and detects units from the header', () => {
+    // Reordered columns, no preamble, explicit kWh unit, single Usage column.
+    const csv = [
+      'Usage (kWh),Start',
+      '1.2,2026-03-01T00:00:00Z',
+      '0.8,2026-03-01T01:00:00Z',
+    ].join('\n');
+    const { blocks } = parseGreenButtonCsv(csv);
+    expect(blocks[0].data[0].value).toBe(1200);
+    expect(blocks[0].data[1].value).toBe(800);
+  });
+
+  it('parses cost columns into micro-dollars', () => {
+    const csv = [
+      'Date,Time,Consumption,Cost',
+      '3/1/2026,12:00 AM,1.0,"$0.12"',
+    ].join('\n');
+    const { blocks } = parseGreenButtonCsv(csv);
+    expect(blocks[0].data[0].cost).toBe(12000); // $0.12 * 100000
+  });
+
+  it('falls back to consumption minus generation when there is no net column', () => {
+    const csv = [
+      'Start,Consumption,Generation',
+      '2026-03-01T12:00:00Z,0.1,0.9',
+    ].join('\n');
+    const { blocks } = parseGreenButtonCsv(csv);
+    expect(blocks[0].data[0].value).toBe(-800); // (0.1 - 0.9) kWh -> -800 Wh
+  });
+
+  it('throws when no recognizable header is present', () => {
+    expect(() => parseGreenButtonCsv('foo,bar\n1,2')).toThrow();
+  });
+});
+
+describe('parseGreenButtonFile', () => {
+  it('routes CSV content to the CSV parser', () => {
+    const { blocks } = parseGreenButtonFile(loadFixture('sample-csv-net-metered.csv'));
+    expect(blocks[0].data.length).toBe(5);
+  });
+
+  it('routes XML content to the XML parser', () => {
+    const { blocks } = parseGreenButtonFile(loadFixture('sample-single-block.xml'));
+    expect(blocks.length).toBeGreaterThan(0);
   });
 });
 

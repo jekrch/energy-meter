@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import { type DataPoint, type TimeRange } from '../types';
-import { parseGreenButtonXML, generateSampleData, type ParsedBlock } from '../utils/dataUtils';
+import { parseGreenButtonFile, generateSampleData, type ParsedBlock } from '../utils/dataUtils';
 import { BLOCK_DAILY_THRESHOLD, SAMPLE_LOAD_DELAY } from '../constants';
 
 interface UseEnergyDataOptions {
@@ -42,7 +42,7 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const { blocks } = parseGreenButtonXML(ev.target?.result as string);
+        const { blocks } = parseGreenButtonFile(ev.target?.result as string);
         if (blocks.length === 0) throw new Error('No IntervalReading data found.');
         if (blocks.length === 1) applyBlock(blocks[0]);
         else setPendingBlocks(blocks);
