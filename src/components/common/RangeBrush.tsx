@@ -13,10 +13,12 @@ interface RangeBrushProps {
     boundsStart: number | null;
     boundsEnd: number | null;
     onRangeChange: (start: number, end: number) => void;
+    /** Fires continuously during a drag with live timestamps (for display only, no filtering). */
+    onRangePreview?: (start: number, end: number) => void;
 }
 
-export const RangeBrush = React.memo(function RangeBrush({ 
-    data, viewStart, viewEnd, boundsStart, boundsEnd, onRangeChange 
+export const RangeBrush = React.memo(function RangeBrush({
+    data, viewStart, viewEnd, boundsStart, boundsEnd, onRangeChange, onRangePreview
 }: RangeBrushProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const draggingRef = useRef<'left' | 'right' | 'middle' | null>(null);
@@ -82,7 +84,8 @@ export const RangeBrush = React.memo(function RangeBrush({
 
         setLocalLeft(newLeft);
         setLocalRight(newRight);
-    }, []);
+        onRangePreview?.(pctToTimestamp(newLeft), pctToTimestamp(newRight));
+    }, [onRangePreview, pctToTimestamp]);
 
     const handlePointerUp = useCallback((e: React.PointerEvent) => {
         if (draggingRef.current && localLeft !== null && localRight !== null) {
@@ -119,7 +122,7 @@ export const RangeBrush = React.memo(function RangeBrush({
         >
             {/* Sparkline background */}
             <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <path d={sparklinePath} fill="none" stroke="#1b2538" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                <path d={sparklinePath} fill="none" stroke="#475569" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             </svg>
 
             {/* Dimmed areas outside selection */}

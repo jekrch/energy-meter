@@ -271,7 +271,7 @@ export default function App() {
   return (
     <AnimatedBackground>
       <div className="min-h-screen text-slate-100 font-sans selection:bg-emerald-500/30">
-        <header className="bg-header border-b border-header-line sticky top-0 z-50">
+        <header className="bg-header border-b border-line sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl shrink-0"><Plug className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" /></div>
@@ -284,7 +284,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v2.1.1
+                    v3
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
@@ -332,7 +332,7 @@ export default function App() {
                   {(openModal) => (
                     <button
                       onClick={openModal}
-                      className="w-full group bg-linear-to-r from-surface from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 transition-colors duration-300"
+                      className="w-full group bg-linear-to-r from-surface-2 from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 transition-colors duration-300"
                     >
                       <div className="flex items-center gap-3 sm:gap-4">
                         <div className="shrink-0 bg-linear-to-br from-amber-500 to-amber-400 w-10 h-10 sm:w-[42px] sm:h-[42px] rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
@@ -352,7 +352,7 @@ export default function App() {
                   )}
                 </InsightsModal>
 
-                <div className="bg-surface rounded-2xl border border-line overflow-hidden flex flex-col min-h-[600px]">
+                <div className="bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]">
                   <div className="border-b border-header-line px-3 md:px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex bg-sunken p-1 rounded-lg border border-line">

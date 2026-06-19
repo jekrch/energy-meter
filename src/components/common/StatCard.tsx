@@ -35,7 +35,7 @@ export const StatCard = React.memo(function StatCard({ icon, label, value, unit,
     const style = accentStyles[accent] ?? { bg: 'bg-sunken', border: 'border-line-2', text: 'text-slate-400' };
 
     return (
-        <div className="relative bg-surface-2 border border-line-2 rounded-xl p-3 sm:p-3.5 overflow-hidden">
+        <div className="relative bg-surface-2 border border-line-2 hover:border-white/30 transition-colors duration-150 rounded-xl p-3 sm:p-3.5 overflow-hidden">
 
             {/* Accent rail — kept as a soft hairline so color reads as punctuation, not decoration */}
             <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-r opacity-60 ${accent}`} />

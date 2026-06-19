@@ -130,7 +130,7 @@ export const MainChart = React.memo(function MainChart({
                                 <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1b2538" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#475569" />
                         <XAxis
                             dataKey="fullDate"
                             stroke="#94a3b8"
@@ -168,6 +168,8 @@ export const MainChart = React.memo(function MainChart({
                             />
                         )}
                         <Tooltip
+                            offset={28}
+                            allowEscapeViewBox={{ x: true }}
                             content={(props) => (
                                 <ChartTooltip
                                     {...props}

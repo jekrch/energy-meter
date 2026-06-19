@@ -148,7 +148,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
   };
 
   return (
-    <div className="bg-surface rounded-2xl border border-line overflow-hidden">
+    <div className="bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-header-line flex items-center justify-between">
         <div className="flex items-center gap-2">

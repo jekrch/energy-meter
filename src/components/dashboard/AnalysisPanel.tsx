@@ -369,13 +369,14 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }} onClick={handleChartClick}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1b2538" />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#475569" />
                             <XAxis dataKey={xAxisDataKey} stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
                                 <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
                             )}
-                            <Tooltip 
+                            <Tooltip
+                            offset={48} 
                                 content={(props) => (
                                     <ChartTooltip {...props} isTouchDevice={isTouchDevice} activeIndex={activeIndex} tooltipRef={tooltipRef} 
                                         metricMode={metricMode} energyUnit={energyUnit} showWeather={showWeather} temperatureUnit={temperatureUnit} getTooltipData={getTooltipData} />
@@ -437,7 +438,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 </div>
 
                 <div className="space-y-4">
-                    <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Filter Data</div>
+                    <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Filter Data</div>
 
                     {showWeather && stableTempBounds && (
                         <div className="space-y-2">

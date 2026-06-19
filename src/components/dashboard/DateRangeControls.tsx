@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Calendar, ZoomOut, CalendarDays } from 'lucide-react';
 import type { TimeRange } from '../../types';
 import { formatDateTimeLocal } from '../../utils/formatters';
@@ -18,12 +18,23 @@ export const DateRangeControls = React.memo(function DateRangeControls({
     viewRange, dataBounds, brushData, isZoomed, onViewChange, onZoomOut, onBrushChange
 }: DateRangeControlsProps) {
 
+    // Live timestamps shown in the date inputs while dragging the brush.
+    // Kept local so the inputs track the drag without triggering filtering.
+    const [previewRange, setPreviewRange] = useState<{ start: number; end: number } | null>(null);
+
+    const handleBrushPreview = useCallback((start: number, end: number) => {
+        setPreviewRange({ start, end });
+    }, []);
+
     const handleBrushChange = useCallback((start: number, end: number) => {
+        setPreviewRange(null);
         onBrushChange({ start, end });
     }, [onBrushChange]);
 
+    const displayRange = previewRange ?? viewRange;
+
     return (
-        <div className="bg-surface rounded-2xl border border-line p-3 sm:p-4 flex flex-col gap-3 hover:border-line-2 transition-colors min-w-0">
+        <div className="bg-surface-2 rounded-2xl border border-line p-3 sm:p-4 flex flex-col gap-3 hover:border-white/30 transition-colors duration-150 min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-header-line pb-2">
                 <span className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 whitespace-nowrap h-8">
                     <Calendar className="w-4 h-4 text-slate-500 shrink-0" /> Date Range
@@ -41,7 +52,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
             <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-10">
                 {(['start', 'end'] as const).map(field => (
                     <div key={field} className="relative group w-full min-w-0">
-                        <label className="absolute -top-2 left-2 px-1 bg-surface text-[10px] text-slate-500 font-medium group-focus-within:text-emerald-500 transition-colors capitalize z-10">
+                        <label className="absolute -top-2 left-2 px-1 bg-surface-2 text-[10px] text-slate-500 font-medium group-focus-within:text-emerald-500 transition-colors capitalize z-10">
                             {field}
                         </label>
                         <div className="w-full overflow-hidden rounded-md relative">
@@ -49,7 +60,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                                 id={`date-${field}`}
                                 type="datetime-local"
                                 style={{ colorScheme: 'dark' }}
-                                value={formatDateTimeLocal(viewRange[field])}
+                                value={formatDateTimeLocal(displayRange[field])}
                                 onChange={(e) => onViewChange(field, e.target.value)}
                                 className="appearance-none w-full max-w-full block m-0 min-w-0 bg-sunken border border-line rounded-md px-3 pr-10 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner box-border h-11 leading-[2.75rem]"
                             />
@@ -75,6 +86,7 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                         boundsStart={dataBounds.start}
                         boundsEnd={dataBounds.end}
                         onRangeChange={handleBrushChange}
+                        onRangePreview={handleBrushPreview}
                     />
                 </div>
             )}
