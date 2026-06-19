@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Layers, X, ChevronRight, Zap, DollarSign, Calendar, Hash } from 'lucide-react';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import type { ParsedBlock } from '../../utils/dataUtils';
 import { formatCost } from '../../utils/formatters';
 import { formatShortDate } from '../../utils/formatters';
@@ -32,6 +33,8 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
   onCancel,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+
+  useScrollLock(true);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

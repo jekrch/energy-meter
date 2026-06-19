@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { MapPin, Loader2, X, Thermometer } from 'lucide-react';
 import type { GeocodingResult } from '../../utils/weatherData';
 
@@ -19,6 +20,8 @@ export const WeatherSettings = React.memo(function WeatherSettings({
 }: WeatherSettingsProps) {
   const [inputValue, setInputValue] = useState(zipCode);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useScrollLock(isExpanded);
   const [isAnimating, setIsAnimating] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -82,7 +85,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
       <div 
         ref={dropdownRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[340px] transition-all duration-150 ease-out ${
+        className={`w-full max-w-[340px] md:max-w-md transition-all duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
       >

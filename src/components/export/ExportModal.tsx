@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { Download, X, FileJson, FileSpreadsheet, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { PillGroup, PillButton } from '../common/PillButton';
@@ -48,6 +49,8 @@ export const ExportModal = React.memo(function ExportModal({
   temperatureUnit = 'F',
 }: ExportModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useScrollLock(isExpanded);
   const [isAnimating, setIsAnimating] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [columns, setColumns] = useState<ExportColumn[]>([]);
@@ -355,7 +358,7 @@ export const ExportModal = React.memo(function ExportModal({
       <div
         ref={dropdownRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[340px] mt-[8vh] max-h-[84vh] flex flex-col transition-all duration-150 ease-out ${
+        className={`w-full max-w-[340px] md:max-w-md mt-[8vh] max-h-[84vh] flex flex-col transition-all duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
         style={{ touchAction: 'auto' }}

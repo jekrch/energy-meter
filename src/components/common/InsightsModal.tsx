@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { Lightbulb, X, ChevronRight, Clock, Calendar, TrendingUp, Moon, Sun, Snowflake, Flame } from 'lucide-react';
 import type { AnalysisFilters } from '../../types';
 import type { MetricMode } from '../charts/MainChart';
@@ -141,6 +142,8 @@ export const InsightsModal = React.memo(function InsightsModal({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
+  useScrollLock(isExpanded);
+
   const closeModal = useCallback(() => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -195,7 +198,7 @@ export const InsightsModal = React.memo(function InsightsModal({
       <div
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-md max-h-[75vh] flex flex-col transition-all duration-150 ease-out ${
+        className={`w-full max-w-md md:max-w-lg max-h-[75vh] flex flex-col transition-all duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
       >
