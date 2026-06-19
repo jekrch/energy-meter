@@ -4,9 +4,10 @@ import { processDataAsync, downsampleLTTB } from '../utils/dataUtils';
 import { MAX_CHART_POINTS, MIN_LOADING_TIME } from '../constants';
 
 // Owns the chart aggregation pipeline: runs processDataAsync off the main
-// paint, gates it behind a minimum loading time, and LTTB-downsamples the
-// result for the chart. Extracted verbatim from App so the god component
-// no longer carries the processing refs/effect.
+// paint and gates it behind a minimum loading time. processDataAsync caps the
+// series to MAX_CHART_POINTS *before* enriching each point with date strings,
+// so a huge RAW/HOURLY view never materializes a full enriched copy (the iOS
+// memory crash). The chartData downsample below is then a no-op safety net.
 export function useChartProcessing(viewData: DataPoint[], resolution: string) {
   const [aggregatedData, setAggregatedData] = useState<DataPoint[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -25,7 +26,7 @@ export function useChartProcessing(viewData: DataPoint[], resolution: string) {
     requestAnimationFrame(() => {
       const startTime = Date.now();
 
-      processDataAsync(viewData, resolution).then(result => {
+      processDataAsync(viewData, resolution, MAX_CHART_POINTS).then(result => {
         if (currentProcess === processingRef.current) {
           const elapsed = Date.now() - startTime;
           const remainingTime = Math.max(0, MIN_LOADING_TIME - elapsed);

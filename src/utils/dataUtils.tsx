@@ -3,6 +3,7 @@ import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
 import { toDemandKW } from './demandUnits';
+import { MAX_CHART_POINTS } from '../constants';
 
 const CHUNK_SIZE = 2000;
 
@@ -45,19 +46,30 @@ export const downsampleLTTB = (data: DataPoint[], threshold: number): DataPoint[
   return sampled;
 };
 
-// Async Data Processing - now includes cost aggregation
-export const processDataAsync = (data: DataPoint[], resolution: string): Promise<DataPoint[]> => {
+// Async Data Processing - now includes cost aggregation.
+// maxPoints caps the result *before* the expensive date-string enrichment: a
+// multi-year RAW (or HOURLY) view can be 100k+ readings, and enriching every one
+// only to thin it to maxPoints for the chart spikes memory hard enough to crash
+// iOS Safari (per-tab memory ceiling). LTTB selects on timestamp/value — both
+// present pre-enrichment — so the chosen points, and the rendered line, are
+// identical to enrich-then-downsample.
+export const processDataAsync = (
+  data: DataPoint[],
+  resolution: string,
+  maxPoints: number = MAX_CHART_POINTS
+): Promise<DataPoint[]> => {
   return new Promise((resolve) => {
     if (!data.length) { resolve([]); return; }
 
     if (resolution === 'RAW') {
+      const source = data.length > maxPoints ? downsampleLTTB(data, maxPoints) : data;
       const result: DataPoint[] = [];
       let i = 0;
 
       const processChunk = () => {
-        const end = Math.min(i + CHUNK_SIZE, data.length);
+        const end = Math.min(i + CHUNK_SIZE, source.length);
         for (; i < end; i++) {
-          const d = data[i];
+          const d = source[i];
           const dateObj = new Date(d.timestamp * 1000);
           result.push({
             ...d,
@@ -67,7 +79,7 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
             fullDate: `${formatShortDate(dateObj)}, ${dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
           });
         }
-        if (i < data.length) requestAnimationFrame(processChunk);
+        if (i < source.length) requestAnimationFrame(processChunk);
         else resolve(result);
       };
 
@@ -95,23 +107,35 @@ export const processDataAsync = (data: DataPoint[], resolution: string): Promise
           if (demand > group.demand) group.demand = demand;
         });
 
-        const result = [...groups.entries()]
+        // Cheap numeric series first (no strings), capped before enrichment for
+        // the same reason as the RAW path above — HOURLY over several years is
+        // tens of thousands of buckets, all thinned to maxPoints regardless.
+        const numeric: DataPoint[] = [...groups.entries()]
           .sort((a, b) => a[0] - b[0])
-          .map(([timestamp, agg]) => {
-            const dateObj = new Date(timestamp * 1000);
-            const dateStr = formatShortDate(dateObj);
-            const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          .map(([timestamp, agg]) => ({
+            timestamp,
+            value: agg.value,
+            cost: agg.cost,
+            demand: agg.demand,
+          }));
 
-            return {
-              timestamp,
-              value: agg.value,
-              cost: agg.cost,
-              demand: agg.demand,
-              date: dateStr,
-              time: resolution === 'HOURLY' ? timeStr : '',
-              fullDate: resolution === 'HOURLY' ? `${dateStr}, ${timeStr}` : dateStr
-            };
-          });
+        const capped = numeric.length > maxPoints ? downsampleLTTB(numeric, maxPoints) : numeric;
+
+        const result = capped.map(p => {
+          const dateObj = new Date(p.timestamp * 1000);
+          const dateStr = formatShortDate(dateObj);
+          const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          return {
+            timestamp: p.timestamp,
+            value: p.value,
+            cost: p.cost,
+            demand: p.demand,
+            date: dateStr,
+            time: resolution === 'HOURLY' ? timeStr : '',
+            fullDate: resolution === 'HOURLY' ? `${dateStr}, ${timeStr}` : dateStr
+          };
+        });
 
         resolve(result);
       });

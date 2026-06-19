@@ -95,19 +95,21 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const tempBoundsDisplay = useMemo(() => {
         if (!showWeather || !weatherData?.size) return null;
         
-        const temps: number[] = [];
+        // Single pass tracking min/max — no temps array, no Math.min(...spread).
+        let minC = Infinity;
+        let maxC = -Infinity;
         for (const item of results.timeline) {
             if (typeof item.timestamp === 'number') {
                 const temp = weatherData.get(item.timestamp);
-                if (temp !== undefined) temps.push(temp);
+                if (temp !== undefined) {
+                    if (temp < minC) minC = temp;
+                    if (temp > maxC) maxC = temp;
+                }
             }
         }
-        
-        if (temps.length === 0) return null;
-        
-        const minC = Math.min(...temps);
-        const maxC = Math.max(...temps);
-        
+
+        if (minC === Infinity) return null;
+
         if (temperatureUnit === 'F') {
             return {
                 min: Math.floor(celsiusToFahrenheit(minC)),
@@ -298,10 +300,15 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const tempDomain = useMemo(() => {
         if (!showWeather || !weatherData?.size) return [0, 40];
-        const temps = Array.from(weatherData.values());
-        if (temps.length === 0) return [0, 40];
-        const min = Math.min(...temps);
-        const max = Math.max(...temps);
+        // O(n) min/max — avoid Math.min(...temps) spreading every temp as an
+        // argument (call-stack blowout / iOS crash on long hourly ranges).
+        let min = Infinity;
+        let max = -Infinity;
+        for (const t of weatherData.values()) {
+            if (t < min) min = t;
+            if (t > max) max = t;
+        }
+        if (min === Infinity) return [0, 40];
         const padding = (max - min) * 0.1 || 5;
         return [Math.floor(min - padding), Math.ceil(max + padding)];
     }, [weatherData, showWeather]);

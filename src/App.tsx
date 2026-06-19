@@ -85,6 +85,12 @@ export default function App() {
 
   const viewData = useMemo(() => {
     if (!rawData || !viewRange.start || !viewRange.end) return rawData || [];
+    // When the view spans the whole dataset (the default, un-zoomed state),
+    // skip the filter — it would copy every point, doubling resident memory
+    // for no benefit. rawData is sorted ascending, so a full span needs no work.
+    if (viewRange.start <= rawData[0].timestamp && viewRange.end >= rawData[rawData.length - 1].timestamp) {
+      return rawData;
+    }
     return rawData.filter(d => d.timestamp >= viewRange.start! && d.timestamp <= viewRange.end!);
   }, [rawData, viewRange]);
 
@@ -278,7 +284,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v2.1
+                    v2.1.1
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}

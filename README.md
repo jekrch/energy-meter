@@ -1,5 +1,5 @@
 # GB Energy Meter :zap:
-[![Version](https://img.shields.io/badge/version-2.1-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
+[![Version](https://img.shields.io/badge/version-2.1.1-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
 [![Test](https://github.com/jekrch/energy-meter/actions/workflows/test.yml/badge.svg)](https://github.com/jekrch/energy-meter/actions/workflows/test.yml)
 
 A web application for visualizing and analyzing energy consumption data from Green Button XML and CSV files. Built with React, TypeScript, and Vite.

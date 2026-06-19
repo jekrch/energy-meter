@@ -72,9 +72,14 @@ export const MainChart = React.memo(function MainChart({
 
     const tempDomain = useMemo(() => {
         if (!showWeather || !weatherData?.size) return [0, 40];
-        const temps = Array.from(weatherData.values());
-        const min = Math.min(...temps);
-        const max = Math.max(...temps);
+        // O(n) min/max — Math.min(...arr) spreads every hourly temp as an
+        // argument, which blows the call stack / crashes iOS on long ranges.
+        let min = Infinity;
+        let max = -Infinity;
+        for (const t of weatherData.values()) {
+            if (t < min) min = t;
+            if (t > max) max = t;
+        }
         const padding = (max - min) * 0.1 || 5;
         return [Math.floor(min - padding), Math.ceil(max + padding)];
     }, [weatherData, showWeather]);
