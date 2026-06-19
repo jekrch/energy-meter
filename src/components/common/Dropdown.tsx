@@ -69,10 +69,10 @@ export function Dropdown<T extends string = string>({
         type="button"
         onClick={toggle}
         disabled={disabled}
-        className={`w-full flex items-center justify-between bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2.5 text-sm text-left transition-all ${
+        className={`w-full flex items-center justify-between bg-sunken border border-line rounded-lg px-3 py-2.5 text-sm text-left transition-colors focus-visible:outline-none ${
           open
             ? 'ring-2 ring-emerald-500/40 border-emerald-500/50'
-            : 'hover:border-slate-600 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/50'
+            : 'hover:border-line-2 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/50'
         } ${disabled ? 'pointer-events-none opacity-60' : ''}`}
       >
         <span className="text-slate-200 truncate">{selectedLabel}</span>
@@ -87,7 +87,7 @@ export function Dropdown<T extends string = string>({
       {open && (
         <div
           ref={menuRef}
-          className={`absolute z-50 left-0 right-0 bg-slate-800 border border-slate-700/80 rounded-lg shadow-xl shadow-black/40 py-1 ${
+          className={`absolute z-50 left-0 right-0 bg-surface-2 border border-line-2 rounded-lg shadow-float py-1 ${
             menuAbove ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
           style={{ animation: 'dropdown-enter 120ms ease-out' }}
@@ -105,7 +105,7 @@ export function Dropdown<T extends string = string>({
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
                   isSelected
                     ? 'text-emerald-400 bg-emerald-500/10'
-                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-slate-100'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-slate-100'
                 }`}
               >
                 <div

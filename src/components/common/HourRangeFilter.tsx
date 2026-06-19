@@ -139,9 +139,9 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
     <div className="flex flex-col gap-3">
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Clock className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-slate-400 text-xs font-medium">Hours</span>
+        <div className="flex items-center gap-2 text-slate-300">
+          <Clock className="w-3.5 h-3.5" />
+          <span className="text-sm font-medium">Hours</span>
         </div>
         
         <div className="flex items-center gap-2">
@@ -167,10 +167,10 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
             <button
               key={label}
               onClick={() => applyPreset(start, end)}
-              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
-                isActive 
-                  ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30' 
-                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${
+                isActive
+                  ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30'
+                  : 'bg-sunken text-slate-400 hover:bg-white/5 hover:text-slate-300'
               }`}
             >
               <Icon className="w-3 h-3" />
@@ -188,7 +188,7 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
           onPointerDown={(e) => handlePointerDown(e, 'track')}
         >
           {/* Background track */}
-          <div className="absolute inset-x-0 h-2 bg-slate-800 rounded-full" />
+          <div className="absolute inset-x-0 h-2 bg-sunken rounded-full" />
           
           {/* Active range bar */}
           <div 
@@ -269,10 +269,10 @@ export function HourRangeFilter({ hourStart, hourEnd, onChange }: HourRangeFilte
                 setLocalEnd(newEnd);
                 onChange(newStart, newEnd);
               }}
-              className={`flex-1 h-5 rounded-sm transition-all ${
-                inRange 
-                  ? 'bg-emerald-500/40 hover:bg-emerald-500/60' 
-                  : 'bg-slate-800/50 hover:bg-slate-700/50'
+              className={`flex-1 h-5 rounded-sm transition-colors ${
+                inRange
+                  ? 'bg-emerald-500/40 hover:bg-emerald-500/60'
+                  : 'bg-sunken hover:bg-white/5'
               }`}
               title={formatHourFull(h)}
             />

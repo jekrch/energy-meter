@@ -52,11 +52,11 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
       <div
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl max-h-[84vh] flex flex-col"
+        className="w-full max-w-2xl max-h-[84vh] flex flex-col"
       >
-        <div className="bg-slate-800/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col">
+        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-emerald-500/10 rounded-lg">
                 <Layers className="w-4 h-4 text-emerald-400" />
@@ -72,7 +72,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
             </div>
             <button
               onClick={onCancel}
-              className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded-lg transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
               aria-label="Cancel"
             >
               <X className="w-4 h-4" />
@@ -96,7 +96,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
                 <button
                   key={meta.id}
                   onClick={() => onSelect(idx)}
-                  className="w-full flex items-start gap-3 px-3 py-3 bg-slate-900/50 hover:bg-slate-700/50 border border-slate-700/50 hover:border-emerald-500/40 rounded-lg transition-all group text-left"
+                  className="w-full flex items-start gap-3 px-3 py-3 bg-sunken hover:bg-white/5 border border-line hover:border-emerald-500/40 rounded-lg transition-colors group text-left"
                 >
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -115,7 +115,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
                         {meta.flowDirectionLabel}
                       </span>
                       {meta.powerOfTenMultiplier !== 0 && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-300">
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white/5 text-slate-300">
                           ×10^{meta.powerOfTenMultiplier} {meta.uomLabel}
                         </span>
                       )}
@@ -143,14 +143,14 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-1" />
+                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150 flex-shrink-0 mt-1" />
                 </button>
               );
             })}
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-2.5 bg-slate-900/40 border-t border-slate-700/30 flex-shrink-0">
+          <div className="px-4 py-2.5 bg-sunken border-t border-header-line flex-shrink-0">
             <p className="text-[10px] text-slate-500">
               Tip: for a solar/net-metered home, pick the forward (delivered) block to see what you bought from the utility.
             </p>

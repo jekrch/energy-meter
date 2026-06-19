@@ -85,13 +85,13 @@ export const WeatherSettings = React.memo(function WeatherSettings({
       <div 
         ref={dropdownRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[340px] md:max-w-md transition-all duration-150 ease-out ${
+        className={`w-full max-w-[380px] md:max-w-lg transition-[opacity,transform] duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
       >
-        <div className="bg-slate-800/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
+        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-header-line">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-sky-500/10 rounded-lg">
                 <Thermometer className="w-4 h-4 text-sky-400" />
@@ -100,7 +100,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
             </div>
             <button
               onClick={closeDropdown}
-              className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded-lg transition-colors"
+              className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -119,14 +119,14 @@ export const WeatherSettings = React.memo(function WeatherSettings({
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Zip code or city name"
-                  className="flex-1 bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/50 transition-all"
+                  className="flex-1 bg-sunken border border-line rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/50 transition-colors"
                   style={{ fontSize: '16px' }}
                   autoFocus
                 />
                 <button
                   type="submit"
                   disabled={isLoading || !inputValue.trim()}
-                  className="px-4 py-2.5 text-sm font-medium bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-all disabled:cursor-not-allowed"
+                  className="px-4 py-2.5 text-sm font-medium bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:bg-sunken disabled:text-slate-500 text-white rounded-lg transition-colors disabled:cursor-not-allowed"
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Set'}
                 </button>
@@ -139,7 +139,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
               )}
 
               {location && (
-                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2.5 group">
+                <div className="flex items-center justify-between bg-sunken border border-line rounded-lg px-3 py-2.5 group">
                   <div className="flex items-center gap-2 text-sm text-slate-300 min-w-0">
                     <MapPin className="w-4 h-4 text-sky-400 flex-shrink-0" />
                     <span className="truncate font-medium">{location.name}</span>
@@ -158,7 +158,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
             </form>
 
             {location && (
-              <div className="mt-4 pt-4 border-t border-slate-700/50">
+              <div className="mt-4 pt-4 border-t border-header-line">
                 <label className="flex items-center gap-3 cursor-pointer group">
                   <div className="relative">
                     <input
@@ -167,8 +167,8 @@ export const WeatherSettings = React.memo(function WeatherSettings({
                       onChange={(e) => onToggle(e.target.checked)}
                       className="peer sr-only"
                     />
-                    <div className="w-9 h-5 bg-slate-700 rounded-full peer-checked:bg-sky-600 transition-colors" />
-                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-slate-300 rounded-full shadow-sm peer-checked:translate-x-4 peer-checked:bg-white transition-all" />
+                    <div className="w-9 h-5 bg-line-2 rounded-full peer-checked:bg-sky-600 transition-colors" />
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-slate-300 rounded-full shadow-sm peer-checked:translate-x-4 peer-checked:bg-white transition-[transform,background-color] duration-150" />
                   </div>
                   <span className="text-sm text-slate-300 group-hover:text-slate-200 transition-colors">Show on charts</span>
                 </label>
@@ -176,7 +176,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
             )}
           </div>
 
-          <div className="px-4 py-2.5 bg-slate-900/40 border-t border-slate-700/30">
+          <div className="px-4 py-2.5 bg-sunken border-t border-header-line">
             <p className="text-[10px] text-slate-500">Data from Open-Meteo • Cached locally</p>
           </div>
         </div>
@@ -192,10 +192,10 @@ export const WeatherSettings = React.memo(function WeatherSettings({
         {/* Toggle button - always shows icon, shows state on larger screens */}
         <button
           onClick={() => onToggle(!enabled)}
-          className={`flex items-center justify-center gap-1.5 h-8 rounded-lg transition-all ${
+          className={`flex items-center justify-center gap-1.5 h-8 rounded-lg transition-colors ${
             enabled
               ? 'bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/30 px-2.5'
-              : 'bg-slate-800/80 text-slate-400 hover:text-slate-300 ring-1 ring-slate-700/50 hover:ring-slate-600 w-8'
+              : 'bg-surface-2 text-slate-400 hover:text-slate-300 ring-1 ring-line hover:ring-line-2 w-8'
           }`}
           title={enabled ? 'Hide temperature' : 'Show temperature'}
         >
@@ -207,7 +207,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
         <button
           ref={buttonRef}
           onClick={openDropdown}
-          className="flex items-center gap-1 ml-1 px-1.5 py-1 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 rounded-md transition-all"
+          className="flex items-center gap-1 ml-1 px-1.5 py-1 text-xs text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-md transition-colors"
           title={`Location: ${location.name}`}
         >
           <MapPin className="w-3 h-3" />
@@ -224,7 +224,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
       <button
         ref={buttonRef}
         onClick={openDropdown}
-        className={`flex items-center justify-center gap-1.5 h-8 rounded-lg transition-all ${
+        className={`flex items-center justify-center gap-1.5 h-8 rounded-lg transition-colors ${
           isExpanded
             ? 'bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/40 px-3'
             : 'bg-gradient-to-r from-sky-500/10 to-sky-600/10 text-sky-400/80 hover:text-sky-400 ring-1 ring-sky-500/20 hover:ring-sky-500/40 px-3'

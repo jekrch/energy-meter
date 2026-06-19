@@ -10,9 +10,9 @@ export const FilterChip = React.memo(function FilterChip({ label, selected, onCl
     return (
         <button
             onClick={onClick}
-            className={`px-2 py-1 text-xs font-medium rounded transition-all ${selected
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-slate-200'
+            className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${selected
+                    ? 'bg-emerald-500/12 border-emerald-500/40 text-emerald-300'
+                    : 'bg-surface-2 border-line-2 text-slate-400 hover:text-slate-200'
                 }`}
         >
             {label}

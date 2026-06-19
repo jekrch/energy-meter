@@ -152,7 +152,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center overflow-hidden">
       {/* Solid base layer - fully opaque */}
-      <div className="absolute inset-0 bg-slate-900" />
+      <div className="absolute inset-0 bg-surface" />
       
       {/* Subtle animated gradient for visual interest */}
       <div 
@@ -200,7 +200,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   count,
   label,
 }) => (
-  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30">
+  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-2 border border-line-2">
     {/* {loading && (
       <div className="relative w-3 h-3">
         <div

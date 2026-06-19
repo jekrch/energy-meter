@@ -2,7 +2,7 @@ import React from 'react';
 
 export function AnimatedBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative min-h-screen bg-slate-950 overflow-hidden">
+    <div className="relative min-h-screen bg-base overflow-hidden">
       {/* Animated gradient orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {/* Primary emerald orb - slow drift */}

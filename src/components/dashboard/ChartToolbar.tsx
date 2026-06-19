@@ -35,12 +35,12 @@ export function ChartToolbar({
 }: ChartToolbarProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <PillGroup className="bg-slate-800/80 rounded-lg">
+      <PillGroup className="bg-sunken rounded-lg">
 
         <PillButton
           active={metricMode === 'cost'}
           onClick={() => setMetricMode('cost')}
-          activeClassName="bg-emerald-500/15 text-emerald-400 shadow-sm"
+          activeClassName="bg-emerald-500/15 text-emerald-400"
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md"
         >
           <DollarSign className="w-3.5 h-3.5" />
@@ -49,7 +49,7 @@ export function ChartToolbar({
         <PillButton
           active={metricMode === 'energy'}
           onClick={() => setMetricMode('energy')}
-          activeClassName="bg-amber-500/15 text-amber-400 shadow-sm"
+          activeClassName="bg-amber-500/15 text-amber-400"
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md"
         >
           <Zap className="w-3.5 h-3.5" />
@@ -58,7 +58,7 @@ export function ChartToolbar({
         <PillButton
           active={metricMode === 'demand'}
           onClick={() => setMetricMode('demand')}
-          activeClassName="bg-violet-500/15 text-violet-400 shadow-sm"
+          activeClassName="bg-violet-500/15 text-violet-400"
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md"
         >
           <Gauge className="w-3.5 h-3.5" />
@@ -68,19 +68,19 @@ export function ChartToolbar({
       </PillGroup>
 
       {metricMode === 'demand' && (
-        <PillGroup className="bg-slate-800/80 rounded-lg">
+        <PillGroup className="bg-sunken rounded-lg">
           <span className="px-2 py-1.5 text-xs text-violet-400 font-medium">kW</span>
         </PillGroup>
       )}
 
       {metricMode === 'energy' && (
-        <PillGroup className="bg-slate-800/80 rounded-lg">
+        <PillGroup className="bg-sunken rounded-lg">
           {ENERGY_UNITS.map(({ value, label }) => (
             <PillButton
               key={value}
               active={energyUnit === value}
               onClick={() => setEnergyUnit(value)}
-              activeClassName="bg-amber-500/15 text-amber-400 shadow-sm"
+              activeClassName="bg-amber-500/15 text-amber-400"
               className="px-2 py-1.5 text-xs rounded-md"
             >
               {label}
@@ -90,13 +90,13 @@ export function ChartToolbar({
       )}
 
       {activeTab === 'chart' && (
-        <PillGroup className="bg-slate-800/80 rounded-lg">
+        <PillGroup className="bg-sunken rounded-lg">
           {Object.keys(RESOLUTIONS).map((key) => (
             <PillButton
               key={key}
               active={resolution === key}
               onClick={() => setResolution(key)}
-              activeClassName="bg-slate-700 text-emerald-400 shadow-sm"
+              activeClassName="bg-emerald-500/15 text-emerald-400"
               className="px-2.5 py-1.5 text-xs rounded-md"
             >
               {RESOLUTIONS[key].label.split(' ')[0]}
@@ -120,11 +120,11 @@ export function ChartToolbar({
         />
 
         {weather.enabled && weather.location && (
-          <PillGroup className="bg-slate-800/80 rounded-lg">
+          <PillGroup className="bg-sunken rounded-lg">
             <PillButton
               active={temperatureUnit === 'F'}
               onClick={() => setTemperatureUnit('F')}
-              activeClassName="bg-sky-500/15 text-sky-400 shadow-sm"
+              activeClassName="bg-sky-500/15 text-sky-400"
               className="px-2 py-1.5 text-xs rounded-md"
             >
               °F
@@ -132,7 +132,7 @@ export function ChartToolbar({
             <PillButton
               active={temperatureUnit === 'C'}
               onClick={() => setTemperatureUnit('C')}
-              activeClassName="bg-sky-500/15 text-sky-400 shadow-sm"
+              activeClassName="bg-sky-500/15 text-sky-400"
               className="px-2 py-1.5 text-xs rounded-md"
             >
               °C

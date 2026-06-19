@@ -149,13 +149,13 @@ export const TempRangeSlider = React.memo(function TempRangeSlider({
                 
                 {/* Left mask */}
                 <div 
-                    className="absolute left-0 h-2 rounded-l-full bg-slate-900/80 transition-[width] duration-75"
+                    className="absolute left-0 h-2 rounded-l-full bg-surface/80 transition-[width] duration-75"
                     style={{ width: `${leftPercent}%` }}
                 />
                 
                 {/* Right mask */}
                 <div 
-                    className="absolute right-0 h-2 rounded-r-full bg-slate-900/80 transition-[width] duration-75"
+                    className="absolute right-0 h-2 rounded-r-full bg-surface/80 transition-[width] duration-75"
                     style={{ width: `${100 - rightPercent}%` }}
                 />
                 

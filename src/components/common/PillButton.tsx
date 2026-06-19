@@ -7,14 +7,14 @@ import React from 'react';
 
 interface PillGroupProps {
   // Caller supplies the background + rounding variant, e.g.
-  // "bg-slate-800/80 rounded-lg". Everything else is fixed.
+  // "bg-sunken rounded-lg". Everything else is fixed.
   className?: string;
   children: React.ReactNode;
 }
 
 export function PillGroup({ className = '', children }: PillGroupProps) {
   return (
-    <div className={`flex p-0.5 border border-slate-700/50 ${className}`}>
+    <div className={`flex p-0.5 border border-line ${className}`}>
       {children}
     </div>
   );
@@ -24,7 +24,8 @@ interface PillButtonProps {
   active: boolean;
   onClick: () => void;
   // Classes applied when active (typically the accent color), e.g.
-  // "bg-emerald-500/15 text-emerald-400 shadow-sm".
+  // "bg-emerald-500/15 text-emerald-400". Active pills use color, not shadow —
+  // elevation is reserved for floating surfaces (see --shadow-float).
   activeClassName: string;
   inactiveClassName?: string;
   // Per-use layout: padding, text size, rounding, flex, gap.
@@ -46,7 +47,7 @@ export function PillButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`font-medium transition-all ${className} ${active ? activeClassName : inactiveClassName}${disabled ? ' pointer-events-none' : ''}`}
+      className={`font-medium transition-colors duration-150 ${className} ${active ? activeClassName : inactiveClassName}${disabled ? ' pointer-events-none' : ''}`}
     >
       {children}
     </button>

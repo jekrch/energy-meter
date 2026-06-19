@@ -112,23 +112,23 @@ export const RangeBrush = React.memo(function RangeBrush({
     return (
         <div 
             ref={containerRef}
-            className="relative h-12 bg-slate-950/50 border border-slate-700/50 rounded-md select-none touch-none"
+            className="relative h-12 bg-sunken border border-line rounded-md select-none touch-none"
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
         >
             {/* Sparkline background */}
             <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
-                <path d={sparklinePath} fill="none" stroke="#334155" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                <path d={sparklinePath} fill="none" stroke="#1b2538" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             </svg>
 
             {/* Dimmed areas outside selection */}
             <div 
-                className="absolute top-0 bottom-0 left-0 bg-slate-950/70 rounded-l-md"
+                className="absolute top-0 bottom-0 left-0 bg-base/70 rounded-l-md"
                 style={{ width: `${leftPct}%` }}
             />
             <div 
-                className="absolute top-0 bottom-0 right-0 bg-slate-950/70 rounded-r-md"
+                className="absolute top-0 bottom-0 right-0 bg-base/70 rounded-r-md"
                 style={{ width: `${100 - rightPct}%` }}
             />
 

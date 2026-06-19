@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge, Upload } from 'lucide-react';
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
@@ -270,14 +270,14 @@ export default function App() {
 
   return (
     <AnimatedBackground>
-      <div className="min-h-screen bg-slate-950x text-slate-100 font-sans selection:bg-emerald-500/30">
-        <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-500/10 p-2 rounded-lg"><Plug className="w-6 h-6 text-emerald-500" /></div>
-              <div>
-                <h1 className="text-lg md:text-xl font-bold">
-                  <span className="text-emerald-500">GB</span> Energy Meter
+      <div className="min-h-screen text-slate-100 font-sans selection:bg-emerald-500/30">
+        <header className="bg-header border-b border-header-line sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl shrink-0"><Plug className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" /></div>
+              <div className="min-w-0">
+                <h1 className="text-lg md:text-xl font-bold tracking-tight">
+                  <span className="text-emerald-400">GB</span> Energy Meter
                   <a
                     href="https://github.com/jekrch/energy-meter/releases"
                     target="_blank"
@@ -287,10 +287,15 @@ export default function App() {
                     v2.1.1
                   </a>
                 </h1>
-                {fileName && <p className="text-slate-400 text-xs font-medium truncate max-w-[200px]">{fileName}</p>}
+                {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
               </div>
             </div>
-            {rawData && <button onClick={reset} className="text-sm bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded transition-colors">Upload</button>}
+            {rawData && (
+              <button onClick={reset} className="shrink-0 flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Upload</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -306,18 +311,18 @@ export default function App() {
           ) : (
             stats && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} sub={`${stats.avgDemand} kW avg`} />
-                  <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <StatCard accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
+                  <StatCard accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
                   {metricMode === 'demand' ? (
-                    <StatCard icon={<Activity className="w-5 h-5 text-violet-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" sub={stats.avgCost} />
+                    <StatCard accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" subHighlight={stats.avgCost} sub="avg cost" />
                   ) : (
-                    <StatCard icon={<Activity className="w-5 h-5 text-blue-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} sub={stats.avgCost} />
+                    <StatCard accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
                   )}
                   {metricMode === 'demand' ? (
-                    <StatCard icon={<Gauge className="w-5 h-5 text-violet-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" sub={stats.peakDemandDate} />
+                    <StatCard accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} />
                   ) : (
-                    <StatCard icon={<AlertCircle className="w-5 h-5 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} sub={`${stats.peakDate} • ${stats.peakCost}`} />
+                    <StatCard accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} />
                   )}
                 </div>
 
@@ -327,32 +332,30 @@ export default function App() {
                   {(openModal) => (
                     <button
                       onClick={openModal}
-                      className="w-full group bg-gradient-to-r from-slate-500/10 via-slate-500/10 to-amber-500/10 hover:from-slate-500/20 hover:via-amber-500/20 hover:to-amber-500/20 border border-slate-500/30 hover:border-amber-400/50 rounded-lg p-4 transition-all duration-300"
+                      className="w-full group bg-linear-to-r from-surface from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 transition-colors duration-300"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-gradient-to-br from-amber-600 to-amber-400 p-2.5 rounded-lg shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
-                            <LightbulbIcon className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-left">
-                            <h3 className="text-sm font-semibold text-slate-100 group-hover:text-white transition-colors">
-                              Answer Questions About Your Usage
-                            </h3>
-                            <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors mt-0.5">
-                              Tap to explore guided insights like peak hours, seasonal trends, and cost patterns
-                            </p>
-                          </div>
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="shrink-0 bg-linear-to-br from-amber-500 to-amber-400 w-10 h-10 sm:w-[42px] sm:h-[42px] rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
+                          <LightbulbIcon className="w-5 h-5 text-amber-950" />
                         </div>
-                        <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+                        <div className="text-left flex-1 min-w-0">
+                          <h3 className="text-sm sm:text-base font-bold text-slate-300! group-hover:text-white! transition-colors">
+                            Answer Questions About Your Usage
+                          </h3>
+                          <p className="text-xs sm:text-[13px] text-slate-400 group-hover:text-slate-300 transition-colors mt-0.5">
+                            Tap to explore guided insights like peak hours, seasonal trends, and cost patterns
+                          </p>
+                        </div>
+                        <ChevronRight className="shrink-0 w-5 h-5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150" />
                       </div>
                     </button>
                   )}
                 </InsightsModal>
 
-                <div className="bg-slate-900 rounded-md shadow-sm border border-slate-800 overflow-hidden flex flex-col min-h-[600px]">
-                  <div className="border-b border-slate-800 px-3 md:px-4 py-3 space-y-2">
+                <div className="bg-surface rounded-2xl border border-line overflow-hidden flex flex-col min-h-[600px]">
+                  <div className="border-b border-header-line px-3 md:px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                      <div className="flex bg-sunken p-1 rounded-lg border border-line">
                         <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
                         <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
                         <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>

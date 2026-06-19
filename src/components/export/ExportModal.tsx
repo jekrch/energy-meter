@@ -358,14 +358,14 @@ export const ExportModal = React.memo(function ExportModal({
       <div
         ref={dropdownRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[340px] md:max-w-md mt-[8vh] max-h-[84vh] flex flex-col transition-all duration-150 ease-out ${
+        className={`w-full max-w-[380px] md:max-w-lg mt-[8vh] max-h-[84vh] flex flex-col transition-[opacity,transform] duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
         style={{ touchAction: 'auto' }}
       >
-        <div className="bg-slate-800/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col max-h-[84vh]">
+        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col max-h-[84vh]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-emerald-500/10 rounded-lg">
                 <Download className="w-4 h-4 text-emerald-400" />
@@ -375,7 +375,7 @@ export const ExportModal = React.memo(function ExportModal({
             {!isExporting && (
               <button
                 onClick={closeDropdown}
-                className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded-lg transition-colors"
+                className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -385,17 +385,17 @@ export const ExportModal = React.memo(function ExportModal({
           {/* Fixed sections: summary, format, group-by */}
           <div className="px-4 pt-4 pb-2 space-y-4 flex-shrink-0">
             {/* Summary */}
-            <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2 space-y-1">
+            <div className="bg-sunken border border-line rounded-lg px-3 py-2 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-400">Rows</span>
-                <span className="text-sm font-medium text-slate-200 tabular-nums">
+                <span className="text-sm font-medium text-slate-200 font-mono tabular-nums">
                   {data.length.toLocaleString()}
                 </span>
               </div>
               {dateRangeLabel && (
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-400">Range</span>
-                  <span className="text-xs text-slate-400 tabular-nums">{dateRangeLabel}</span>
+                  <span className="text-xs text-slate-400 font-mono tabular-nums">{dateRangeLabel}</span>
                 </div>
               )}
             </div>
@@ -405,12 +405,12 @@ export const ExportModal = React.memo(function ExportModal({
               <label className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">
                 Format
               </label>
-              <PillGroup className="bg-slate-900/60 rounded-lg">
+              <PillGroup className="bg-sunken rounded-lg">
                 <PillButton
                   active={format === 'csv'}
                   onClick={() => setFormat('csv')}
                   disabled={isExporting}
-                  activeClassName="bg-emerald-500/15 text-emerald-400 shadow-sm"
+                  activeClassName="bg-emerald-500/15 text-emerald-400"
                   className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs rounded-md"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -420,7 +420,7 @@ export const ExportModal = React.memo(function ExportModal({
                   active={format === 'json'}
                   onClick={() => setFormat('json')}
                   disabled={isExporting}
-                  activeClassName="bg-emerald-500/15 text-emerald-400 shadow-sm"
+                  activeClassName="bg-emerald-500/15 text-emerald-400"
                   className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs rounded-md"
                 >
                   <FileJson className="w-3.5 h-3.5" />
@@ -474,17 +474,17 @@ export const ExportModal = React.memo(function ExportModal({
                     key={col.key}
                     onClick={() => !isDisabled && toggleColumn(col.key)}
                     disabled={isDisabled}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
                       col.enabled
-                        ? 'bg-slate-900/60 border border-slate-700/50'
-                        : 'bg-transparent border border-transparent hover:bg-slate-900/30'
+                        ? 'bg-surface-2 border border-line-2'
+                        : 'bg-transparent border border-transparent hover:bg-white/5'
                     } ${isDisabled ? 'pointer-events-none opacity-40' : ''}`}
                   >
                     <div
-                      className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-all ${
+                      className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
                         col.enabled
                           ? 'bg-emerald-500/20 border border-emerald-500/50'
-                          : 'border border-slate-600'
+                          : 'border border-line-2'
                       }`}
                     >
                       {col.enabled && <Check className="w-3 h-3 text-emerald-400" />}
@@ -506,18 +506,18 @@ export const ExportModal = React.memo(function ExportModal({
             {/* Rate unit picker */}
             {rateEnabled && (
               <div ref={ratePickerRef} className="pb-2 pt-1">
-                <div className="bg-slate-900/40 border border-slate-700/30 rounded-lg px-3 py-2.5">
+                <div className="bg-sunken border border-line rounded-lg px-3 py-2.5">
                   <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">
                     Rate Unit
                   </label>
-                  <PillGroup className="bg-slate-900/60 rounded-md">
+                  <PillGroup className="bg-sunken rounded-md">
                     {RATE_UNIT_OPTIONS.map(opt => (
                       <PillButton
                         key={opt.value}
                         active={rateUnit === opt.value}
                         onClick={() => setRateUnit(opt.value)}
                         disabled={isExporting}
-                        activeClassName="bg-amber-500/15 text-amber-400 shadow-sm"
+                        activeClassName="bg-amber-500/15 text-amber-400"
                         inactiveClassName="text-slate-500 hover:text-slate-300"
                         className="flex-1 px-2 py-1.5 text-[11px] rounded"
                       >
@@ -531,7 +531,7 @@ export const ExportModal = React.memo(function ExportModal({
           </div>
 
           {/* Footer: options + export button */}
-          <div className="px-4 pt-2 pb-4 space-y-3 flex-shrink-0 border-t border-slate-700/30">
+          <div className="px-4 pt-2 pb-4 space-y-3 flex-shrink-0 border-t border-header-line">
             {format === 'csv' && (
               <label className={`flex items-center gap-3 cursor-pointer group ${isExporting ? 'pointer-events-none opacity-60' : ''}`}>
                 <div className="relative">
@@ -542,8 +542,8 @@ export const ExportModal = React.memo(function ExportModal({
                     className="peer sr-only"
                     disabled={isExporting}
                   />
-                  <div className="w-8 h-[18px] bg-slate-700 rounded-full peer-checked:bg-emerald-600/80 transition-colors" />
-                  <div className="absolute top-[1px] left-[1px] w-4 h-4 bg-slate-300 rounded-full shadow-sm peer-checked:translate-x-[14px] peer-checked:bg-white transition-all" />
+                  <div className="w-8 h-[18px] bg-surface-2 rounded-full peer-checked:bg-emerald-600/80 transition-colors" />
+                  <div className="absolute top-[1px] left-[1px] w-4 h-4 bg-slate-300 rounded-full shadow-sm peer-checked:translate-x-[14px] peer-checked:bg-white transition-[transform,background-color] duration-150" />
                 </div>
                 <span className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">Include header row</span>
               </label>
@@ -551,7 +551,7 @@ export const ExportModal = React.memo(function ExportModal({
 
             {isExporting ? (
               <div className="space-y-2">
-                <div className="relative h-9 bg-slate-900/80 border border-slate-700/50 rounded-lg overflow-hidden">
+                <div className="relative h-9 bg-sunken border border-line rounded-lg overflow-hidden">
                   <div
                     className="absolute inset-y-0 left-0 bg-emerald-500/20"
                     style={{ width: `${exportProgress}%`, transition: 'width 120ms linear' }}
@@ -561,7 +561,7 @@ export const ExportModal = React.memo(function ExportModal({
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-20" />
                       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                     </svg>
-                    <span className="text-xs font-medium text-emerald-400 tabular-nums">
+                    <span className="text-xs font-medium text-emerald-400 font-mono tabular-nums">
                       {exportProgress}%
                     </span>
                   </div>
@@ -577,7 +577,7 @@ export const ExportModal = React.memo(function ExportModal({
               <button
                 onClick={handleExport}
                 disabled={enabledColumns.length === 0}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-all disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:bg-sunken disabled:text-slate-600 disabled:border-line rounded-lg transition-colors disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
                 Export {enabledColumns.length > 0
@@ -597,7 +597,7 @@ export const ExportModal = React.memo(function ExportModal({
       <button
         ref={buttonRef}
         onClick={openDropdown}
-        className="flex items-center justify-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/50 border border-slate-700/30 text-slate-400 hover:text-emerald-400 hover:border-slate-600 transition-all"
+        className="flex items-center justify-center gap-1.5 px-2 py-1 rounded-md bg-surface-2 border border-line-2 text-slate-400 hover:text-emerald-400 hover:border-line-2 hover:bg-white/5 transition-colors"
         title="Export data"
       >
         <Download className="w-3.5 h-3.5" />

@@ -1,9 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
-body {
-  @apply bg-slate-950;
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Navy surface palette */
+  --color-base: #0a0e17;        /* page background */
+  --color-header: #0c1220;      /* header bar */
+  --color-header-line: #161f30; /* header border */
+  --color-surface: #0e1524;     /* primary panels */
+  --color-surface-2: #141b2b;   /* raised cards (KPIs) */
+  --color-sunken: #0a1120;      /* inset fields / plot areas */
+  --color-line: color-mix(in srgb, white 7%, transparent);   /* panel borders (hairline) */
+  --color-line-2: color-mix(in srgb, white 10%, transparent); /* card borders (hairline) */
+
+  /* Single elevation token — floating elements only (tooltips, modals, dropdowns).
+     Flat/raised surfaces rely on border + surface-depth contrast, no shadow. */
+  --shadow-float: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 4px 12px -4px rgb(0 0 0 / 0.4);
 }
 
+body {
+  @apply bg-base text-slate-100;
+}
+
+/* Global keyboard focus ring — accent (emerald) at low alpha.
+   Keyboard-only via :focus-visible so mouse clicks stay clean.
+   outline follows border-radius and sits alongside the box-shadow
+   focus rings a few inputs define, without doubling up. */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, #34d399 60%, transparent);
+  outline-offset: 2px;
+}
 
 .recharts-wrapper,
 .recharts-wrapper *,

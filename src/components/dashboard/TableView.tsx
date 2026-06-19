@@ -41,7 +41,7 @@ function SortHeader({ label, field, currentSort, direction, onSort, align = 'lef
     const isActive = currentSort === field;
     return (
         <th
-            className={`px-4 py-3 bg-slate-800 cursor-pointer hover:bg-slate-750 select-none transition-colors ${align === 'right' ? 'text-right' : ''}`}
+            className={`px-4 py-3 bg-sunken cursor-pointer hover:bg-white/5 select-none transition-colors ${align === 'right' ? 'text-right' : ''}`}
             onClick={() => onSort(field)}
         >
             <div className={`flex items-center gap-1.5 ${align === 'right' ? 'justify-end' : ''}`}>
@@ -103,7 +103,7 @@ export const TableView = React.memo(function TableView({
         <div className="flex flex-col h-full">
             <div className="flex-1 overflow-auto">
                 <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-400 uppercase bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
+                    <thead className="text-xs text-slate-400 uppercase bg-sunken border-b border-line sticky top-0 z-10">
                         <tr>
                             <SortHeader label="Date/Time" field="timestamp" currentSort={sortField} direction={sortDirection} onSort={handleSort} />
                             {hasDuration && (
@@ -115,22 +115,22 @@ export const TableView = React.memo(function TableView({
                             )}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
+                    <tbody className="divide-y divide-header-line">
                         {tableData.map((row, idx) => (
-                            <tr key={idx} className="bg-slate-900 hover:bg-slate-800/80 transition-colors">
+                            <tr key={idx} className="bg-surface hover:bg-white/5 transition-colors">
                                 <td className="px-4 py-3 font-medium text-slate-300 whitespace-nowrap">
                                     {formatDateTime(row.timestamp)}
                                 </td>
                                 {hasDuration && (
-                                    <td className="px-4 py-3 text-right text-slate-500 font-mono text-xs">
+                                    <td className="px-4 py-3 text-right text-slate-500 font-mono text-xs tabular-nums">
                                         {row.duration ? formatDuration(row.duration) : '—'}
                                     </td>
                                 )}
-                                <td className="px-4 py-3 text-right font-mono text-amber-400">
+                                <td className="px-4 py-3 text-right font-mono text-amber-400 tabular-nums">
                                     {formatEnergyValue(row.value, energyUnit)}
                                 </td>
                                 {hasCost && (
-                                    <td className="px-4 py-3 text-right font-mono text-emerald-400">
+                                    <td className="px-4 py-3 text-right font-mono text-emerald-400 tabular-nums">
                                         {row.cost ? formatCost(row.cost) : '—'}
                                     </td>
                                 )}
@@ -139,7 +139,7 @@ export const TableView = React.memo(function TableView({
                     </tbody>
                 </table>
             </div>
-            <div className="border-t border-slate-800 p-4 bg-slate-900 flex items-center justify-between text-sm">
+            <div className="border-t border-header-line p-4 bg-surface flex items-center justify-between text-sm">
                 <span className="text-slate-500 text-xs">
                     {sortedData.length > 0
                         ? `${((page - 1) * rowsPerPage) + 1}–${Math.min(page * rowsPerPage, sortedData.length)} of ${sortedData.length.toLocaleString()}`
@@ -151,7 +151,7 @@ export const TableView = React.memo(function TableView({
                     <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={page === 1}
-                        className="p-2 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="p-2 hover:bg-white/5 text-slate-400 hover:text-emerald-400 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -161,7 +161,7 @@ export const TableView = React.memo(function TableView({
                     <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={page === totalPages || totalPages === 0}
-                        className="p-2 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="p-2 hover:bg-white/5 text-slate-400 hover:text-emerald-400 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                         <ChevronRight className="w-4 h-4" />
                     </button>

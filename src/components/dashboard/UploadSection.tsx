@@ -17,8 +17,8 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
 
     return (
         <div className="max-w-xl mx-auto mt-0 pb-12">
-            <div className="bg-slate-900 rounded-xl shadow-xl border border-slate-800 p-8 text-center transition-all duration-300">
-                <div className="bg-slate-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-slate-700">
+            <div className="bg-surface rounded-2xl border border-line p-8 text-center transition-colors duration-300">
+                <div className="bg-surface-2 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-line-2">
                     <Upload className="w-10 h-10 text-emerald-500" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2 text-slate-100">Upload Energy Data</h2>
@@ -39,7 +39,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
 
                 <div className="flex flex-col gap-4">
                     <label className="relative cursor-pointer group">
-                        <div className="w-full bg-emerald-600 text-white font-medium py-3 px-6 rounded-lg shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2">
+                        <div className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
                             <FileText className="w-4 h-4" />
                             {loading ? 'Processing...' : 'Choose XML or CSV File'}
                         </div>
@@ -48,15 +48,15 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
 
                     {/* Demo section with friendly nudge */}
                     <div className="relative mt-2">
-                        <div className="absolute inset-0 bg-gradient-to-r from-slate-500/10 via-slate-400/10 to-slate-500/10 rounded-xl blur-xl opacity-50" />
-                        <div className="relative bg-slate-800/50 border border-slate-700/60 rounded-xl p-4">
+                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-emerald-400/10 to-emerald-500/10 rounded-xl blur-xl opacity-50" />
+                        <div className="relative bg-surface-2 border border-line-2 rounded-xl p-4">
                             <p className="text-sm text-slate-400 mb-3">
                                 No file? <span className="text-slate-300 font-medium">See it in action first</span>
                             </p>
                             <button
                                 onClick={onLoadSample}
                                 disabled={loading}
-                                className="w-full bg-transparent border-2 border-slate-600 text-slate-300 font-medium py-2.5 px-6 rounded-lg hover:border-slate-500 hover:text-white hover:bg-slate-700/50 transition-all flex items-center justify-center gap-2"
+                                className="w-full bg-sunken border border-line text-slate-300 font-medium py-2.5 px-6 rounded-lg hover:border-line-2 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Zap className="w-4 h-4" />
                                 Try the Demo
@@ -66,13 +66,13 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                 </div>
 
                 {/* Info Section - more prominent */}
-                <div className="mt-8 pt-6 border-t border-slate-800">
+                <div className="mt-8 pt-6 border-t border-header-line">
                     <button
                         onClick={() => setShowInfo(!showInfo)}
-                        className={`flex items-center justify-center gap-3 text-sm w-full py-2.5 px-4 rounded-lg transition-all ${
-                            showInfo 
-                                ? 'bg-slate-800 text-emerald-400' 
-                                : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800/50'
+                        className={`flex items-center justify-center gap-3 text-sm w-full py-2.5 px-4 rounded-lg transition-colors ${
+                            showInfo
+                                ? 'bg-emerald-500/12 text-emerald-300'
+                                : 'text-slate-400 hover:text-emerald-400 hover:bg-white/5'
                         }`}
                     >
                         <Info className="w-4 h-4 flex-shrink-0" />
@@ -84,17 +84,17 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                     </button>
 
                     {showInfo && (
-                        <div className="mt-4 bg-slate-800/50 rounded-lg overflow-hidden animate-in fade-in slide-in-from-top-2 text-left">
-                            <div className="flex border-b border-slate-700">
+                        <div className="mt-4 bg-sunken border border-line rounded-lg overflow-hidden animate-in fade-in slide-in-from-top-2 text-left">
+                            <div className="flex border-b border-header-line">
                                 <button
                                     onClick={() => setActiveTab('format')}
-                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'format' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'format' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
                                     How to get it
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('privacy')}
-                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'privacy' ? 'bg-slate-700 text-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'privacy' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
                                 >
                                     Privacy
                                 </button>
@@ -103,7 +103,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                             <div className="p-5">
                                 {activeTab === 'format' ? (
                                     <>
-                                        <div className="mb-5 pb-5 border-b border-slate-700/50">
+                                        <div className="mb-5 pb-5 border-b border-header-line">
                                             <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
                                                 <Zap className="w-4 h-4" /> What is it?
                                             </h4>
@@ -116,7 +116,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                             </a>
                                         </div>
 
-                                        <div className="mb-5 pb-5 border-b border-slate-700/50">
+                                        <div className="mb-5 pb-5 border-b border-header-line">
                                             <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
                                                 <Download className="w-4 h-4" /> General Instructions
                                             </h4>
@@ -141,7 +141,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                     </>
                                 ) : (
                                     <div className="space-y-4">
-                                        <div className="bg-slate-900/50 p-3 rounded border border-slate-700/50 flex gap-3">
+                                        <div className="bg-surface-2 p-3 rounded border border-line-2 flex gap-3">
                                             <Lock className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                                             <p className="text-xs text-slate-400">
                                                 We process this file <strong>locally in your browser</strong>.
@@ -178,7 +178,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                         Jacob Krch
                     </a>
                 </div>
-                <a href="https://github.com/jekrch/energy-meter" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs border border-slate-800 bg-slate-900/50 px-3 py-1.5 rounded-full hover:bg-slate-800 hover:text-emerald-400 transition-colors">
+                <a href="https://github.com/jekrch/energy-meter" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs border border-line-2 bg-surface-2 px-3 py-1.5 rounded-full hover:bg-white/5 hover:text-emerald-400 transition-colors">
                     <Github className="w-3 h-3" />
                     <span>Open Source on GitHub</span>
                     <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-50" />

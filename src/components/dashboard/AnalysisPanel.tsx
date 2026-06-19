@@ -18,6 +18,9 @@ import { useDeferredLoading } from '../../hooks/useDeferredLoading';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 import { downsampleLTTB } from '../../utils/dataUtils';
 
+// §8: axis tick text is mono (JetBrains Mono), supplied via Recharts SVG tick props.
+const AXIS_TICK = { fontFamily: "'JetBrains Mono', ui-monospace, monospace" };
+
 interface AnalysisPanelProps {
     filters: AnalysisFilters;
     setFilters: React.Dispatch<React.SetStateAction<AnalysisFilters>>;
@@ -242,7 +245,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     }, [analysisView, metricMode]);
 
     const getBarColor = useCallback((entry: any): string => {
-        if (analysisView === 'averages') return (entry.isIncomplete || entry.count === 0) ? '#334155' : chartColor;
+        if (analysisView === 'averages') return (entry.isIncomplete || entry.count === 0) ? incompleteColor : chartColor;
         if (viewRange?.start && viewRange?.end && !isPeriodComplete(entry, viewRange.start, viewRange.end)) return incompleteColor;
         return chartColor;
     }, [analysisView, chartColor, viewRange]);
@@ -334,10 +337,10 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     return (
         <div className="flex flex-col h-full">
-            <div className="px-4 pt-3 pb-2 border-b border-slate-800/50">
+            <div className="px-4 pt-3 pb-2 border-b border-header-line">
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-200">{chartDescription.main}</div>
+                        <div className="text-sm font-medium text-slate-300">{chartDescription.main}</div>
                         {chartDescription.filters.length > 0 && (
                             <div className="text-xs text-slate-400 mt-0.5">Filtered to {chartDescription.filters.join(' · ')}</div>
                         )}
@@ -347,8 +350,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
             <div className="h-64 sm:h-80 flex-shrink-0 p-4 relative" ref={chartContainerRef}>
                 {showProcessingOverlay && (
-                    <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-10">
-                        <div className="flex items-center gap-3 bg-slate-800 px-4 py-3 rounded-lg border border-slate-700">
+                    <div className="absolute inset-0 bg-base/80 flex items-center justify-center z-10">
+                        <div className="flex items-center gap-3 bg-surface-2 px-4 py-3 rounded-lg border border-line-2">
                             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
                             <span className="text-slate-300 text-sm">Processing...</span>
                         </div>
@@ -366,11 +369,11 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }} onClick={handleChartClick}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey={xAxisDataKey} stroke="#94a3b8" fontSize={10} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
-                            <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1b2538" />
+                            <XAxis dataKey={xAxisDataKey} stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
+                            <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
-                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
+                                <YAxis yAxisId="temperature" orientation="right" stroke="#38bdf8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={tempAxisFormatter} domain={tempDomain} width={20} />
                             )}
                             <Tooltip 
                                 content={(props) => (
@@ -390,25 +393,25 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 )}
             </div>
 
-            <div className="flex-1 border-t border-slate-800 p-4 space-y-5 overflow-y-auto">
+            <div className="flex-1 border-t border-header-line p-4 space-y-5 overflow-y-auto">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
+                        <div className="flex bg-sunken p-0.5 rounded-lg border border-line">
                             {(['hour', 'dayOfWeek', 'month'] as const).map(g => (
-                                <button key={g} onClick={() => setGroupBy(g)} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    groupBy === g ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                                <button key={g} onClick={() => setGroupBy(g)} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                    groupBy === g ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                 }`}>
                                     {g === 'hour' ? 'Hour' : g === 'dayOfWeek' ? 'Day' : 'Month'}
                                 </button>
                             ))}
                         </div>
-                        <div className="hidden sm:block w-px h-5 bg-slate-700/50" />
-                        <div className="flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-700/50">
-                            <button onClick={() => setAnalysisView('timeline')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                analysisView === 'timeline' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                        <div className="hidden sm:block w-px h-5 bg-line" />
+                        <div className="flex bg-sunken p-0.5 rounded-lg border border-line">
+                            <button onClick={() => setAnalysisView('timeline')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                analysisView === 'timeline' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                             }`}>Timeline</button>
-                            <button onClick={() => setAnalysisView('averages')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                analysisView === 'averages' ? 'bg-slate-700 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                            <button onClick={() => setAnalysisView('averages')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                analysisView === 'averages' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                             }`}>Avg</button>
                         </div>
                         <div className="flex-1 min-w-0" />
@@ -439,7 +442,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     {showWeather && stableTempBounds && (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+                                <div className="flex items-center gap-1.5 text-slate-300 text-sm font-medium">
                                     <Thermometer className="w-3.5 h-3.5" /><span>Temperature</span>
                                 </div>
                                 {isTempFilterActive && (
@@ -454,13 +457,13 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+                            <div className="flex items-center gap-1.5 text-slate-300 text-sm">
                                 <CalendarDays className="w-3.5 h-3.5" /><span>Days of Week</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <button onClick={setWeekdays} className="text-xs text-emerald-400/80 hover:text-emerald-400 transition-colors">Weekdays</button>
+                                <button onClick={setWeekdays} className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors">Weekdays</button>
                                 <span className="text-slate-700">·</span>
-                                <button onClick={setWeekends} className="text-xs text-emerald-400/80 hover:text-emerald-400 transition-colors">Weekends</button>
+                                <button onClick={setWeekends} className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors">Weekends</button>
                                 {filters.daysOfWeek.length > 0 && (
                                     <><span className="text-slate-700">·</span>
                                     <button onClick={clearDays} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button></>
@@ -476,7 +479,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
+                            <div className="flex items-center gap-1.5 text-slate-300 text-sm">
                                 <Calendar className="w-3.5 h-3.5" /><span>Months</span>
                             </div>
                             {filters.months.length > 0 && (

@@ -15,6 +15,10 @@ import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 export type { MetricMode } from '../../types';
 import type { MetricMode } from '../../types';
 
+// §8: axis tick text is mono (JetBrains Mono). Recharts takes this via the SVG
+// tick props, not a Tailwind class. Module-level so it isn't reallocated per render.
+const AXIS_TICK = { fontFamily: "'JetBrains Mono', ui-monospace, monospace" };
+
 interface MainChartProps {
     data: DataPoint[];
     resolution: string;
@@ -106,8 +110,8 @@ export const MainChart = React.memo(function MainChart({
                 ref={chartContainerRef}
             >
                 {isProcessing && (
-                    <div className="absolute inset-0 bg-slate-900/50 flex items-center justify-center z-10 pointer-events-none">
-                        <div className="flex items-center gap-3 bg-slate-800 px-4 py-3 rounded-lg border border-slate-700">
+                    <div className="absolute inset-0 bg-base/50 flex items-center justify-center z-10 pointer-events-none">
+                        <div className="flex items-center gap-3 bg-surface-2 px-4 py-3 rounded-lg border border-line-2">
                             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
                             <span className="text-slate-300 text-sm">Processing data...</span>
                         </div>
@@ -126,11 +130,12 @@ export const MainChart = React.memo(function MainChart({
                                 <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1b2538" />
                         <XAxis
                             dataKey="fullDate"
                             stroke="#94a3b8"
                             fontSize={10}
+                            tick={AXIS_TICK}
                             tickLine={true}
                             axisLine={false}
                             minTickGap={40}
@@ -142,6 +147,7 @@ export const MainChart = React.memo(function MainChart({
                             yAxisId="primary"
                             stroke="#94a3b8"
                             fontSize={10}
+                            tick={AXIS_TICK}
                             tickLine={true}
                             axisLine={false}
                             tickFormatter={yAxisFormatter}
@@ -153,6 +159,7 @@ export const MainChart = React.memo(function MainChart({
                                 orientation="right"
                                 stroke="#38bdf8"
                                 fontSize={10}
+                                tick={AXIS_TICK}
                                 tickLine={true}
                                 axisLine={false}
                                 tickFormatter={tempAxisFormatter}

@@ -63,7 +63,7 @@ export const ChartTooltip = React.memo(function ChartTooltip({
     return (
         <div
             ref={tooltipRef}
-            className="bg-slate-800/95 p-3 shadow-xl border border-slate-700 rounded-lg min-w-[150px]"
+            className="bg-surface-2 p-3 shadow-float border border-line-2 rounded-lg min-w-[150px] opacity-95"
         >
             <p className="text-slate-400 text-xs font-semibold mb-2">
                 {data.label}
@@ -76,26 +76,26 @@ export const ChartTooltip = React.memo(function ChartTooltip({
                 </p>
             ) : (
                 <>
-                    <p className={`font-bold ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                    <p className={`font-mono font-bold slashed-zero tabular-nums ${metricMode === 'energy' ? 'text-amber-400 text-lg' : 'text-slate-400 text-sm'}`}>
                         {formatEnergyValue(data.energyValue, energyUnit)}{' '}
                         <span className="text-xs text-slate-500 font-normal">{energyUnit}</span>
                     </p>
 
                     {hasDemand && (
-                        <p className={`font-semibold mt-1 ${metricMode === 'demand' ? 'text-violet-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                        <p className={`font-mono font-semibold mt-1 slashed-zero tabular-nums ${metricMode === 'demand' ? 'text-violet-400 text-lg' : 'text-slate-400 text-sm'}`}>
                             {formatDemandValue(data.demandValue!)}{' '}
                             <span className="text-xs text-slate-500 font-normal">kW</span>
                         </p>
                     )}
 
                     {hasCost && (
-                        <p className={`font-semibold mt-1 ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
+                        <p className={`font-mono font-semibold mt-1 slashed-zero tabular-nums ${metricMode === 'cost' ? 'text-emerald-400 text-lg' : 'text-slate-400 text-sm'}`}>
                             {formatCost(data.costValue!)}
                         </p>
                     )}
 
                     {hasTemp && (
-                        <p className="text-sky-400 font-medium mt-1.5 text-sm">
+                        <p className="text-sky-400 font-mono font-medium mt-1.5 text-sm slashed-zero tabular-nums">
                             {formatTemp(data.temperature!, temperatureUnit)}
                             <span className="text-xs text-slate-500 font-normal ml-1">avg temp</span>
                         </p>
