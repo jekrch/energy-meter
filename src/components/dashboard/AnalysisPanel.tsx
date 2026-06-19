@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useTransition } from 'react';
+import React, { useCallback, useState, useMemo, useRef, useTransition } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -126,11 +126,24 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         }
     }, [temperatureUnit]);
 
+    // When filters change, results.timeline briefly empties while the chart
+    // reprocesses, which would drop tempBoundsDisplay to null and unmount the
+    // temperature controls — collapsing the panel height and snapping it back
+    // when data returns. Retain the last known bounds during that window so the
+    // controls stay mounted with stable values. Only fall back while weather
+    // data is still present; if it genuinely goes away the controls hide.
+    /* eslint-disable react-hooks/refs */
+    const lastTempBoundsRef = useRef(tempBoundsDisplay);
+    if (tempBoundsDisplay) lastTempBoundsRef.current = tempBoundsDisplay;
+    const stableTempBounds = tempBoundsDisplay
+        ?? (showWeather && weatherData?.size ? lastTempBoundsRef.current : null);
+    /* eslint-enable react-hooks/refs */
+
     const isTempFilterActive = useMemo(() => {
         if (!userHasSetTempFilter) return false;
-        if (!tempBoundsDisplay || debouncedTempMin === null || debouncedTempMax === null) return false;
-        return debouncedTempMin > tempBoundsDisplay.min || debouncedTempMax < tempBoundsDisplay.max;
-    }, [debouncedTempMin, debouncedTempMax, tempBoundsDisplay, userHasSetTempFilter]);
+        if (!stableTempBounds || debouncedTempMin === null || debouncedTempMax === null) return false;
+        return debouncedTempMin > stableTempBounds.min || debouncedTempMax < stableTempBounds.max;
+    }, [debouncedTempMin, debouncedTempMax, stableTempBounds, userHasSetTempFilter]);
 
     const chartDescription = useMemo(() => {
         return buildChartDescription(
@@ -278,14 +291,14 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     }, []);
 
     const handleTempFilterChange = useCallback((min: number, max: number) => {
-        if (tempBoundsDisplay && min <= tempBoundsDisplay.min && max >= tempBoundsDisplay.max) {
+        if (stableTempBounds && min <= stableTempBounds.min && max >= stableTempBounds.max) {
             setTempFilter({ min: null, max: null });
             setUserHasSetTempFilter(false);
         } else {
             setTempFilter({ min, max });
             setUserHasSetTempFilter(true);
         }
-    }, [tempBoundsDisplay]);
+    }, [stableTempBounds]);
 
     const isFilterProcessing = isProcessing || isTempDebouncing || isPending;
     const showProcessingOverlay = useDeferredLoading(isFilterProcessing, 150, 300);
@@ -423,7 +436,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 <div className="space-y-4">
                     <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Filter Data</div>
 
-                    {showWeather && tempBoundsDisplay && (
+                    {showWeather && stableTempBounds && (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
@@ -433,8 +446,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                     <button onClick={resetTempFilter} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Reset</button>
                                 )}
                             </div>
-                            <TempRangeSlider min={tempBoundsDisplay.min} max={tempBoundsDisplay.max} 
-                                valueMin={tempFilter.min ?? tempBoundsDisplay.min} valueMax={tempFilter.max ?? tempBoundsDisplay.max} 
+                            <TempRangeSlider min={stableTempBounds.min} max={stableTempBounds.max}
+                                valueMin={tempFilter.min ?? stableTempBounds.min} valueMax={tempFilter.max ?? stableTempBounds.max}
                                 onChange={handleTempFilterChange} unit={temperatureUnit} />
                         </div>
                     )}
