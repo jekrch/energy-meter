@@ -177,7 +177,7 @@ export default function App() {
     let peakDay = { value: 0, cost: 0, date: new Date() };
     for (const day of dailyTotals.values()) { if (day.value > peakDay.value) peakDay = day; }
 
-    const totalKwh = totalValue / 1000000;
+    const totalKwh = totalValue / 1000; // value is in Wh
     const totalDollars = toDollars(totalCost);
     const effectiveRate = totalKwh > 0 ? totalDollars / totalKwh : 0;
     const numDays = dailyTotals.size;
@@ -307,7 +307,7 @@ export default function App() {
             stats && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} sub={stats.totalCost} />
+                  <StatCard icon={<Zap className="w-5 h-5 text-amber-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} sub={`${stats.avgDemand} kW avg`} />
                   <StatCard icon={<DollarSign className="w-5 h-5 text-emerald-400" />} label="Total Cost" value={stats.totalCost} sub={stats.effectiveRate} />
                   {metricMode === 'demand' ? (
                     <StatCard icon={<Activity className="w-5 h-5 text-violet-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" sub={stats.avgCost} />
