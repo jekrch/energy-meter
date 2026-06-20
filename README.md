@@ -1,5 +1,5 @@
 # GB Energy Meter :zap:
-[![Version](https://img.shields.io/badge/version-2.1.1-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
+[![Version](https://img.shields.io/badge/version-3-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
 [![Test](https://github.com/jekrch/energy-meter/actions/workflows/test.yml/badge.svg)](https://github.com/jekrch/energy-meter/actions/workflows/test.yml)
 
 A web application for visualizing and analyzing energy consumption data from Green Button XML and CSV files. Built with React, TypeScript, and Vite.
@@ -10,18 +10,31 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 ## Features
 
+### Importing Data
+
 - **Green Button XML & CSV Support** — Import energy data from utility providers using the standard Green Button XML format, or from common CSV exports with auto-detected date/time, usage, and unit columns
+- **Recent Files** — Previously loaded files are saved locally in your browser so you can reopen them in one click without re-importing
+- **Merge Datasets** — Combine multiple saved files into a single continuous history, with automatic de-duplication of overlapping intervals, gap detection, and compatibility checks before merging
+- **Demo Data** — Try the app with realistic sample data spanning 2 years
+
+### Visualization & Analysis
+
 - **Interactive Charts** — Visualize consumption with zoomable, responsive area charts
-- **Peak Demand Metrics** — Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
 - **Multi-Resolution Views** — View data at raw, hourly, daily, or weekly aggregations
+- **Peak Demand Metrics** — Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
 - **Analysis Dashboard** — Analyze patterns by hour, day of week, or month with timeline and average views
 - **Guided Insights** — Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
+- **Data Table** — Browse raw readings with pagination
+
+### Cost & Weather
+
 - **Cost Tracking** — Toggle between energy usage and cost metrics with automatic rate calculations
 - **Weather Overlay** — Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
+
+### Display & Storage
+
 - **Flexible Units** — Switch between Wh, kWh, and MWh display units
-- **Data Table** — Browse raw readings with pagination
 - **Local Caching** — Weather data is cached in IndexedDB to minimize API requests
-- **Demo Data** — Try the app with realistic sample data spanning 2 years
 
 ## Tech Stack
 
