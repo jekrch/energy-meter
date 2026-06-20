@@ -44,9 +44,9 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                         <label className="relative cursor-pointer group flex-1">
                             <div className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 transition-colors flex items-center justify-center gap-2">
                                 <FileText className="w-4 h-4" />
-                                {loading ? 'Processing...' : 'Choose XML or CSV File'}
+                                {loading ? 'Processing...' : 'Choose File'}
                             </div>
-                            <input type="file" accept=".xml,.csv" onChange={onUpload} className="hidden" disabled={loading} />
+                            <input type="file" accept=".xml,.csv,.json" onChange={onUpload} className="hidden" disabled={loading} />
                         </label>
                         {historyCount > 0 && onShowHistory && (
                             <button

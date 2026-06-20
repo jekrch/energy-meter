@@ -1,7 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useRef } from 'react';
 import { Layers, X, ChevronRight, Zap, DollarSign, Calendar, Hash } from 'lucide-react';
-import { useScrollLock } from '../../hooks/useScrollLock';
+import { Modal, type ModalHandle } from './Modal';
 import type { ParsedBlock } from '../../utils/dataUtils';
 import { formatCost } from '../../utils/formatters';
 import { formatShortDate } from '../../utils/formatters';
@@ -32,31 +31,18 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
   onSelect,
   onCancel,
 }) => {
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<ModalHandle>(null);
 
-  useScrollLock(true);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onCancel]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9998] flex items-start justify-center pt-[8vh] px-4 bg-black/40 backdrop-blur-[2px]"
-      onClick={onCancel}
+  return (
+    <Modal
+      ref={modalRef}
+      onClose={onCancel}
+      overlayClassName="pt-[8vh] bg-black/40 backdrop-blur-[2px]"
+      panelClassName="max-w-2xl max-h-[84vh]"
+      ariaLabel="Choose a reading set"
     >
-      <div
-        ref={modalRef}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl max-h-[84vh] flex flex-col"
-      >
-        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-emerald-500/10 rounded-lg">
                 <Layers className="w-4 h-4 text-emerald-400" />
@@ -71,7 +57,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
               </div>
             </div>
             <button
-              onClick={onCancel}
+              onClick={() => modalRef.current?.close()}
               className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
               aria-label="Cancel"
             >
@@ -95,7 +81,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
               return (
                 <button
                   key={meta.id}
-                  onClick={() => onSelect(idx)}
+                  onClick={() => modalRef.current?.close(() => onSelect(idx))}
                   className="w-full flex items-start gap-3 px-3 py-3 bg-sunken hover:bg-white/5 border border-line hover:border-emerald-500/40 rounded-lg transition-colors group text-left"
                 >
                   <div className="flex-1 min-w-0 space-y-1.5">
@@ -155,9 +141,6 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
               Tip: for a solar/net-metered home, pick the forward (delivered) block to see what you bought from the utility.
             </p>
           </div>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 };

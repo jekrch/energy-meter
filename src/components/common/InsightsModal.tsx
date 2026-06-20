@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { useScrollLock } from '../../hooks/useScrollLock';
+import React, { useState, useRef, useCallback } from 'react';
+import { Modal, type ModalHandle } from './Modal';
 import { Lightbulb, X, ChevronRight, Clock, Calendar, TrendingUp, Moon, Sun, Snowflake, Flame } from 'lucide-react';
 import type { AnalysisFilters } from '../../types';
 import type { MetricMode } from '../charts/MainChart';
@@ -138,71 +137,26 @@ export const InsightsModal = React.memo(function InsightsModal({
   children,
 }: InsightsModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<ModalHandle>(null);
 
-  useScrollLock(isExpanded);
-
-  const closeModal = useCallback(() => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-    setIsAnimating(false);
-    setTimeout(() => setIsExpanded(false), 150);
-  }, []);
-
-  const openModal = useCallback(() => {
-    setIsExpanded(true);
-    requestAnimationFrame(() => setIsAnimating(true));
-  }, []);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        modalRef.current && !modalRef.current.contains(e.target as Node) &&
-        buttonRef.current && !buttonRef.current.contains(e.target as Node)
-      ) {
-        closeModal();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isExpanded, closeModal]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isExpanded, closeModal]);
+  const closeModal = useCallback(() => setIsExpanded(false), []);
+  const openModal = useCallback(() => setIsExpanded(true), []);
 
   const handleSelectInsight = useCallback((preset: InsightPreset) => {
-    onSelectInsight(preset);
-    closeModal();
-  }, [onSelectInsight, closeModal]);
+    modalRef.current?.close(() => {
+      onSelectInsight(preset);
+      setIsExpanded(false);
+    });
+  }, [onSelectInsight]);
 
-  const modal = isExpanded ? createPortal(
-    <div
-      className={`fixed inset-0 z-[9998] flex items-start justify-center pt-[10vh] px-4 bg-black/30 backdrop-blur-[2px] transition-opacity duration-150 ${
-        isAnimating ? 'opacity-100' : 'opacity-0'
-      }`}
-      onClick={closeModal}
+  const modal = isExpanded ? (
+    <Modal
+      ref={modalRef}
+      onClose={closeModal}
+      overlayClassName="pt-[10vh] bg-black/30 backdrop-blur-[2px]"
+      panelClassName="max-w-lg md:max-w-xl max-h-[75vh]"
+      ariaLabel="Explore your data"
     >
-      <div
-        ref={modalRef}
-        onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-lg md:max-w-xl max-h-[75vh] flex flex-col transition-all duration-150 ease-out ${
-          isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
-        }`}
-      >
-        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -215,7 +169,7 @@ export const InsightsModal = React.memo(function InsightsModal({
               </div>
             </div>
             <button
-              onClick={closeModal}
+              onClick={() => modalRef.current?.close()}
               className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
             >
               <X className="w-4 h-4" />
@@ -262,10 +216,7 @@ export const InsightsModal = React.memo(function InsightsModal({
               You can always adjust the filters manually after
             </p>
           </div>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   ) : null;
 
   // If children render prop is provided, use it for custom trigger
@@ -282,7 +233,6 @@ export const InsightsModal = React.memo(function InsightsModal({
   return (
     <>
       <button
-        ref={buttonRef}
         onClick={openModal}
         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-400/90 hover:text-amber-400 ring-1 ring-amber-500/20 hover:ring-amber-500/40 rounded-lg transition-colors"
         title="Explore common questions about your data"

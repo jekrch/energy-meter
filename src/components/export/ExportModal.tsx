@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { useScrollLock } from '../../hooks/useScrollLock';
+import { Modal, type ModalHandle } from '../common/Modal';
 import { Download, X, FileJson, FileSpreadsheet, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { PillGroup, PillButton } from '../common/PillButton';
@@ -49,9 +48,6 @@ export const ExportModal = React.memo(function ExportModal({
   temperatureUnit = 'F',
 }: ExportModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-
-  useScrollLock(isExpanded);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [columns, setColumns] = useState<ExportColumn[]>([]);
   const [groupBy, setGroupBy] = useState<ExportGroupBy>('none');
@@ -59,8 +55,7 @@ export const ExportModal = React.memo(function ExportModal({
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [includeHeaders, setIncludeHeaders] = useState(true);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<ModalHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const ratePickerRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef(false);
@@ -95,11 +90,7 @@ export const ExportModal = React.memo(function ExportModal({
 
   const closeDropdown = useCallback(() => {
     if (isExporting) return;
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-    setIsAnimating(false);
-    setTimeout(() => setIsExpanded(false), 150);
+    modalRef.current?.close();
   }, [isExporting]);
 
   const openDropdown = useCallback(() => {
@@ -107,40 +98,18 @@ export const ExportModal = React.memo(function ExportModal({
     setExportProgress(0);
     setIsExporting(false);
     cancelRef.current = false;
-    requestAnimationFrame(() => setIsAnimating(true));
   }, []);
 
-  // Click-outside
+  // While exporting, the Modal's own Escape/overlay close is disabled (see
+  // closeOn* props below). Escape instead cancels the in-progress export.
   useEffect(() => {
-    if (!isExpanded) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (isExporting) return;
-      if (
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
-        buttonRef.current && !buttonRef.current.contains(e.target as Node)
-      ) {
-        closeDropdown();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isExpanded, isExporting, closeDropdown]);
-
-  // Escape
-  useEffect(() => {
-    if (!isExpanded) return;
+    if (!isExpanded || !isExporting) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isExporting) cancelRef.current = true;
-        else closeDropdown();
-      }
+      if (e.key === 'Escape') cancelRef.current = true;
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isExpanded, isExporting, closeDropdown]);
+  }, [isExpanded, isExporting]);
 
   // ── Column toggling ─────────────────────────────────────────────────────
 
@@ -347,23 +316,19 @@ export const ExportModal = React.memo(function ExportModal({
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  const modal = isExpanded ? createPortal(
-    <div
-      className={`fixed inset-0 z-[9998] flex items-start justify-center px-4 bg-black/20 backdrop-blur-[2px] transition-opacity duration-150 ${
-        isAnimating ? 'opacity-100' : 'opacity-0'
-      }`}
-      style={{ overscrollBehavior: 'contain', touchAction: 'none' }}
-      onClick={closeDropdown}
+  const modal = isExpanded ? (
+    <Modal
+      ref={modalRef}
+      onClose={() => setIsExpanded(false)}
+      overlayClassName="bg-black/20 backdrop-blur-[2px]"
+      overlayStyle={{ overscrollBehavior: 'contain', touchAction: 'none' }}
+      panelClassName="max-w-[380px] md:max-w-lg mt-[8vh] max-h-[84vh]"
+      panelStyle={{ touchAction: 'auto' }}
+      cardClassName="max-h-[84vh]"
+      closeOnOverlayClick={!isExporting}
+      closeOnEscape={!isExporting}
+      ariaLabel="Export Data"
     >
-      <div
-        ref={dropdownRef}
-        onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[380px] md:max-w-lg mt-[8vh] max-h-[84vh] flex flex-col transition-all duration-150 ease-out ${
-          isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
-        }`}
-        style={{ touchAction: 'auto' }}
-      >
-        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col max-h-[84vh]">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -586,16 +551,12 @@ export const ExportModal = React.memo(function ExportModal({
               </button>
             )}
           </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   ) : null;
 
   return (
     <>
       <button
-        ref={buttonRef}
         onClick={openDropdown}
         className="flex items-center justify-center gap-1.5 px-2 py-1 rounded-md bg-surface-2 border border-line-2 text-slate-400 hover:text-emerald-400 hover:border-line-2 hover:bg-white/5 transition-colors"
         title="Export data"

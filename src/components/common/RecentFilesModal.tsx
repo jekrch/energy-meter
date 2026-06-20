@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   History, X, Calendar, Hash, Loader2, Trash2, ChevronRight,
-  GitMerge, Check, Square, CheckSquare, AlertTriangle, ArrowLeft,
+  GitMerge, Check, Square, CheckSquare, AlertTriangle, ArrowLeft, Ban,
 } from 'lucide-react';
-import { useScrollLock } from '../../hooks/useScrollLock';
+import { Modal, type ModalHandle } from './Modal';
 import type { FileHistoryMeta } from '../../hooks/useFileHistory';
 import type { MergePreview } from '../../utils/mergeData';
 import { formatShortDate } from '../../utils/formatters';
@@ -43,7 +42,7 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   onMergePreview,
   onMergeConfirm,
 }) => {
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<ModalHandle>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
 
   // Multi-select / merge state
@@ -54,16 +53,6 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   const [mergeName, setMergeName] = useState('');
   const [alsoDownload, setAlsoDownload] = useState(true);
   const [busy, setBusy] = useState(false);
-
-  useScrollLock(true);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
 
   const handleLoad = async (id: number) => {
     setLoadingId(id);
@@ -100,12 +89,12 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   };
 
   const handleConfirmMerge = async () => {
-    if (!onMergeConfirm || !preview) return;
+    if (!onMergeConfirm || !preview || preview.blockers.length > 0) return;
     const name = mergeName.trim() || preview.defaultName;
     setBusy(true);
     await onMergeConfirm(preview, name, { load: true, download: alsoDownload });
     setBusy(false);
-    onClose();
+    modalRef.current?.close();
   };
 
   const previewSummary = useMemo(() => {
@@ -154,30 +143,46 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
             </span>
           </div>
         )}
+        {p.gapCount > 0 && (
+          <div className="flex items-start gap-2 text-[12px] text-slate-400">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>
+              {p.gapCount.toLocaleString()} gap{p.gapCount !== 1 ? 's' : ''} in the timeline — missing intervals are left empty, not filled.
+            </span>
+          </div>
+        )}
         {p.warnings.map((w, i) => (
           <div key={i} className="flex items-start gap-2 text-[12px] text-amber-300">
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <span>{w}</span>
           </div>
         ))}
+        {p.blockers.map((b, i) => (
+          <div key={i} className="flex items-start gap-2 text-[12px] text-red-300">
+            <Ban className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{b}</span>
+          </div>
+        ))}
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer text-[12px] text-slate-300 select-none">
-        <span
-          className={`flex items-center justify-center w-4 h-4 rounded border transition-colors ${
-            alsoDownload ? 'bg-emerald-600/30 border-emerald-500/50' : 'border-line'
-          }`}
-        >
-          {alsoDownload && <Check className="w-3 h-3 text-emerald-300" />}
-        </span>
-        <input
-          type="checkbox"
-          checked={alsoDownload}
-          onChange={(e) => setAlsoDownload(e.target.checked)}
-          className="sr-only"
-        />
-        Download a re-loadable copy (.json)
-      </label>
+      {p.blockers.length === 0 && (
+        <label className="flex items-center gap-2 cursor-pointer text-[12px] text-slate-300 select-none">
+          <span
+            className={`flex items-center justify-center w-4 h-4 rounded border transition-colors ${
+              alsoDownload ? 'bg-emerald-600/30 border-emerald-500/50' : 'border-line'
+            }`}
+          >
+            {alsoDownload && <Check className="w-3 h-3 text-emerald-300" />}
+          </span>
+          <input
+            type="checkbox"
+            checked={alsoDownload}
+            onChange={(e) => setAlsoDownload(e.target.checked)}
+            className="sr-only"
+          />
+          Download a re-loadable copy (.json)
+        </label>
+      )}
     </div>
   );
 
@@ -212,8 +217,19 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               )}
 
               <div className="flex-1 min-w-0 space-y-1">
-                <span className="text-sm font-medium text-slate-100 truncate block group-hover:text-white transition-colors">
-                  {entry.fileName}
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors">
+                    {entry.fileName}
+                  </span>
+                  {entry.isMerged && (
+                    <span
+                      className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[9px] font-medium rounded uppercase tracking-wide"
+                      title={entry.sources?.length ? `Merged from ${entry.sources.length} files` : 'Merged dataset'}
+                    >
+                      <GitMerge className="w-2.5 h-2.5" />
+                      Merged
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
                   <span className="flex items-center gap-1">
@@ -267,17 +283,14 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
     ? 'Review the combined dataset before loading'
     : `Stored locally in your browser · last ${entries.length} upload${entries.length !== 1 ? 's' : ''}`;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9998] flex items-start justify-center pt-[8vh] px-4 bg-black/40 backdrop-blur-[2px]"
-      onClick={onClose}
+  return (
+    <Modal
+      ref={modalRef}
+      onClose={onClose}
+      overlayClassName="pt-[8vh] bg-black/40 backdrop-blur-[2px]"
+      panelClassName="max-w-lg max-h-[84vh]"
+      ariaLabel={headerTitle}
     >
-      <div
-        ref={modalRef}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg max-h-[84vh] flex flex-col"
-      >
-        <div className="bg-surface border border-line rounded-2xl shadow-float overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-header-line flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -294,7 +307,7 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               </div>
             </div>
             <button
-              onClick={onClose}
+              onClick={() => modalRef.current?.close()}
               className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-white/5 rounded-lg transition-colors"
               aria-label="Close"
             >
@@ -318,8 +331,8 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               </button>
               <button
                 onClick={handleConfirmMerge}
-                disabled={busy}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                disabled={busy || preview.blockers.length > 0}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitMerge className="w-3.5 h-3.5" />}
                 Merge &amp; load
@@ -359,9 +372,6 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               )}
             </div>
           )}
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 };

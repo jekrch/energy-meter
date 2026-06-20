@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 import { describe, it, expect } from 'bun:test';
-import { mergeDatasets, detectMergeWarnings, buildMergeName, type MergeSource } from './mergeData';
+import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergeSource } from './mergeData';
 import type { DataPoint } from '../types';
 
 const pts = (start: number, count: number, step = 3600, value = 100): DataPoint[] =>
@@ -57,6 +57,21 @@ describe('mergeDatasets', () => {
     expect(result.overlapCount).toBe(1);
   });
 
+  it('reports no gaps for contiguous sources', () => {
+    const a: MergeSource = { fileName: 'a', data: pts(1000, 3) };
+    const b: MergeSource = { fileName: 'b', data: pts(1000 + 3 * 3600, 3) };
+    expect(mergeDatasets([a, b]).gapCount).toBe(0);
+  });
+
+  it('counts a gap between non-contiguous sources without synthesizing points', () => {
+    const a: MergeSource = { fileName: 'a', data: pts(1000, 3, 3600) };
+    // Starts 10 hours after a ends -> a clear hole in the hourly timeline.
+    const b: MergeSource = { fileName: 'b', data: pts(1000 + 13 * 3600, 3, 3600) };
+    const result = mergeDatasets([a, b]);
+    expect(result.data).toHaveLength(6); // no fill data added
+    expect(result.gapCount).toBe(1);
+  });
+
   it('reports per-source provenance metadata', () => {
     const a: MergeSource = { fileName: 'jan.xml', data: pts(1000, 3) };
     const b: MergeSource = { fileName: 'feb.xml', data: pts(1000 + 3 * 3600, 5) };
@@ -88,6 +103,46 @@ describe('detectMergeWarnings', () => {
     const large: MergeSource = { fileName: 'l', data: pts(50000, 10, 3600, 5000) };
     const warnings = detectMergeWarnings([small, large]);
     expect(warnings.some((w) => /magnitude/i.test(w))).toBe(true);
+  });
+});
+
+describe('detectMergeBlockers', () => {
+  it('returns no blockers when provenance is absent (legacy v1 rows)', () => {
+    const a: MergeSource = { fileName: 'a', data: pts(1000, 5) };
+    const b: MergeSource = { fileName: 'b', data: pts(50000, 5) };
+    expect(detectMergeBlockers([a, b])).toEqual([]);
+  });
+
+  it('returns no blockers when flow direction and commodity agree', () => {
+    const a: MergeSource = { fileName: 'a', data: pts(1000, 5), flowDirection: 1, commodity: 1 };
+    const b: MergeSource = { fileName: 'b', data: pts(50000, 5), flowDirection: 1, commodity: 1 };
+    expect(detectMergeBlockers([a, b])).toEqual([]);
+  });
+
+  it('blocks merging different flow directions', () => {
+    const delivered: MergeSource = { fileName: 'd', data: pts(1000, 5), flowDirection: 1 };
+    const received: MergeSource = { fileName: 'r', data: pts(50000, 5), flowDirection: 19 };
+    const blockers = detectMergeBlockers([delivered, received]);
+    expect(blockers.some((b) => /flow direction/i.test(b))).toBe(true);
+  });
+
+  it('blocks merging different commodities', () => {
+    const elec: MergeSource = { fileName: 'e', data: pts(1000, 5), commodity: 1 };
+    const gas: MergeSource = { fileName: 'g', data: pts(50000, 5), commodity: 7 };
+    const blockers = detectMergeBlockers([elec, gas]);
+    expect(blockers.some((b) => /commodit/i.test(b))).toBe(true);
+  });
+});
+
+describe('commonValue', () => {
+  it('returns the shared value when all defined entries agree', () => {
+    expect(commonValue([1, 1, undefined])).toBe(1);
+  });
+  it('returns undefined when entries disagree', () => {
+    expect(commonValue([1, 19])).toBeUndefined();
+  });
+  it('returns undefined when nothing is defined', () => {
+    expect(commonValue([undefined, undefined])).toBeUndefined();
   });
 });
 

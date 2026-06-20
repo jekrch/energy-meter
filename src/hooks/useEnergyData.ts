@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import { type DataPoint, type TimeRange } from '../types';
-import { parseGreenButtonFile, generateSampleData, type ParsedBlock } from '../utils/dataUtils';
+import { parseGreenButtonFile, generateSampleData, type ParsedBlock, type IntervalBlockMeta } from '../utils/dataUtils';
 import { BLOCK_DAILY_THRESHOLD, SAMPLE_LOAD_DELAY } from '../constants';
 
 interface UseEnergyDataOptions {
@@ -10,8 +10,10 @@ interface UseEnergyDataOptions {
   setResolution: (resolution: string) => void;
   // Called when a new dataset starts loading (App resets the table page).
   onLoadStart?: () => void;
-  // Called after a fresh file is parsed successfully (not triggered by history loads).
-  onDataLoaded?: (fileName: string, data: DataPoint[], resolution: string) => void;
+  // Called after a fresh file is parsed successfully (not triggered by history
+  // loads). The block meta carries provenance (flow direction / commodity /
+  // interval) that history persists for later merge-compatibility checks.
+  onDataLoaded?: (fileName: string, data: DataPoint[], resolution: string, meta?: IntervalBlockMeta) => void;
 }
 
 // Owns the loaded dataset and everything that produces it: upload/sample/block
@@ -35,7 +37,7 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
     const res = block.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW';
     setRawData(block.data);
     setResolution(res);
-    onDataLoaded?.(name, block.data, res);
+    onDataLoaded?.(name, block.data, res, block.meta);
   };
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {

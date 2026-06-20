@@ -9,6 +9,12 @@ import type { DataPoint } from '../types';
 export interface MergeSource {
   fileName: string;
   data: DataPoint[];
+  // Optional provenance persisted with history entries (schema v2). When present
+  // on every source these enable real compatibility checks; when absent (older
+  // v1 rows) we fall back to the magnitude/interval heuristics below.
+  flowDirection?: number;
+  commodity?: number;
+  intervalLength?: number;
 }
 
 export interface MergeSourceMeta {
@@ -21,14 +27,28 @@ export interface MergeSourceMeta {
 export interface MergeResult {
   data: DataPoint[];
   overlapCount: number;            // intervals that collided and were deduped
+  gapCount: number;                // boundaries where readings are missing
   sources: MergeSourceMeta[];
 }
 
 // A merge result enriched with everything the preview/confirm UI needs.
 export interface MergePreview extends MergeResult {
-  warnings: string[];
+  warnings: string[];   // non-blocking heuristic concerns
+  blockers: string[];   // true incompatibilities — merge should be prevented
   resolution: string;
   defaultName: string;
+  // Provenance carried onto the merged entry when every source agrees, so the
+  // result stays compatible for future re-merges. Undefined when sources differ
+  // or lack the metadata.
+  flowDirection?: number;
+  commodity?: number;
+}
+
+// The single defined value shared by every source, or undefined if they
+// disagree or none is defined.
+export function commonValue(values: (number | undefined)[]): number | undefined {
+  const unique = distinct(values);
+  return unique.length === 1 ? unique[0] : undefined;
 }
 
 // Strip a file extension for a friendlier default merge name.
@@ -68,6 +88,8 @@ export function mergeDatasets(sources: MergeSource[]): MergeResult {
     }
   }
 
+  const gapCount = countGaps(data);
+
   const sourceMeta: MergeSourceMeta[] = sources.map((source) => {
     let start = Infinity;
     let end = -Infinity;
@@ -83,7 +105,22 @@ export function mergeDatasets(sources: MergeSource[]): MergeResult {
     };
   });
 
-  return { data, overlapCount, sources: sourceMeta };
+  return { data, overlapCount, gapCount, sources: sourceMeta };
+}
+
+// Count boundaries in a sorted, deduped series where at least one interval is
+// missing — i.e. the step to the next reading is meaningfully larger than the
+// dataset's typical interval. Used to tell the user the merged timeline has
+// holes (we never synthesise fill data). Returns the number of gap locations,
+// not the number of missing intervals.
+function countGaps(data: DataPoint[]): number {
+  const typical = medianInterval(data);
+  if (typical == null) return 0;
+  let gaps = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i].timestamp - data[i - 1].timestamp > typical * 1.5) gaps++;
+  }
+  return gaps;
 }
 
 // Median gap between consecutive (sorted) readings — used as a cheap interval
@@ -131,4 +168,29 @@ export function detectMergeWarnings(sources: MergeSource[]): string[] {
   }
 
   return warnings;
+}
+
+// Collect distinct defined values for a numeric provenance field across sources.
+function distinct(values: (number | undefined)[]): number[] {
+  return [...new Set(values.filter((v): v is number => v != null))];
+}
+
+// Phase 2 guardrail: once history entries persist flow direction / commodity
+// (schema v2), we can detect *true* incompatibilities rather than guessing.
+// Merging a "delivered" series with a "received" series, or electricity with
+// gas, produces nonsense — so these are blockers, not warnings. Sources missing
+// the metadata (legacy v1 rows) are simply skipped here and left to the
+// heuristic warnings.
+export function detectMergeBlockers(sources: MergeSource[]): string[] {
+  const blockers: string[] = [];
+
+  if (distinct(sources.map((s) => s.flowDirection)).length > 1) {
+    blockers.push('These files record different flow directions (e.g. delivered vs. received). Merging them would mix unrelated readings.');
+  }
+
+  if (distinct(sources.map((s) => s.commodity)).length > 1) {
+    blockers.push('These files record different commodities (e.g. electricity vs. gas) and cannot be combined.');
+  }
+
+  return blockers;
 }

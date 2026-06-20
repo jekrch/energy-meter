@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge, Upload } from 'lucide-react';
+import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge, Upload, History } from 'lucide-react';
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
 import { type TimeRange, type MetricMode } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { createBrushData } from './utils/dataUtils';
-import { mergeDatasets, detectMergeWarnings, buildMergeName, type MergePreview, type MergeSource } from './utils/mergeData';
+import { createBrushData, type IntervalBlockMeta } from './utils/dataUtils';
+import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergePreview, type MergeSource } from './utils/mergeData';
 import { downloadNativeFile } from './utils/nativeFormat';
 import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { toDemandKW, formatDemandValue } from './utils/demandUnits';
@@ -66,8 +66,12 @@ export default function App() {
   } = useEnergyData({
     setResolution,
     onLoadStart: () => setPage(1),
-    onDataLoaded: useCallback((name: string, data: Parameters<typeof saveEntry>[1], res: string) => {
-      saveEntry(name, data, res);
+    onDataLoaded: useCallback((name: string, data: Parameters<typeof saveEntry>[1], res: string, meta?: IntervalBlockMeta) => {
+      saveEntry(name, data, res, meta && {
+        flowDirection: meta.flowDirection,
+        commodity: meta.commodity,
+        intervalLength: meta.intervalLength,
+      });
     }, [saveEntry]),
   });
 
@@ -298,9 +302,16 @@ export default function App() {
       .filter((e): e is NonNullable<typeof e> => e !== null);
     if (loaded.length < 2) return null;
 
-    const sources: MergeSource[] = loaded.map((e) => ({ fileName: e.fileName, data: e.data }));
+    const sources: MergeSource[] = loaded.map((e) => ({
+      fileName: e.fileName,
+      data: e.data,
+      flowDirection: e.flowDirection,
+      commodity: e.commodity,
+      intervalLength: e.intervalLength,
+    }));
     const result = mergeDatasets(sources);
     const warnings = detectMergeWarnings(sources);
+    const blockers = detectMergeBlockers(sources);
 
     // Keep the shared resolution when all sources agree; otherwise fall back to
     // the same RAW/DAILY threshold the upload pipeline uses.
@@ -312,8 +323,11 @@ export default function App() {
     return {
       ...result,
       warnings,
+      blockers,
       resolution,
       defaultName: buildMergeName(loaded.map((e) => e.fileName)),
+      flowDirection: commonValue(sources.map((s) => s.flowDirection)),
+      commodity: commonValue(sources.map((s) => s.commodity)),
     };
   }, [loadEntry]);
 
@@ -326,7 +340,12 @@ export default function App() {
   ) => {
     if (actions.load) {
       loadFromHistory(preview.data, name, preview.resolution);
-      saveEntry(name, preview.data, preview.resolution);
+      saveEntry(name, preview.data, preview.resolution, {
+        isMerged: true,
+        sources: preview.sources,
+        flowDirection: preview.flowDirection,
+        commodity: preview.commodity,
+      });
     }
     if (actions.download) {
       downloadNativeFile(preview.data, {
@@ -360,10 +379,22 @@ export default function App() {
               </div>
             </div>
             {rawData && (
-              <button onClick={reset} className="shrink-0 flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
-                <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Load</span>
-              </button>
+              <div className="shrink-0 flex items-center gap-2">
+                {historyEntries.length > 0 && (
+                  <button
+                    onClick={() => setShowRecentFiles(true)}
+                    title={`${historyEntries.length} recent file${historyEntries.length !== 1 ? 's' : ''}`}
+                    className="flex items-center gap-1.5 text-sm font-semibold bg-surface-3 hover:bg-white/5 text-slate-400 hover:text-slate-200 border border-line-2 hover:border-slate-500 px-3 py-2 rounded-lg transition-colors"
+                  >
+                    <History className="w-4 h-4" />
+                    <span className="text-xs font-medium">{historyEntries.length}</span>
+                  </button>
+                )}
+                <button onClick={reset} className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">Load</span>
+                </button>
+              </div>
             )}
           </div>
         </header>

@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { DataPoint } from '../types';
+import type { MergeSourceMeta } from '../utils/mergeData';
 
-export interface FileHistoryEntry {
+// Schema-v2 provenance fields. All optional so v1 rows (which predate them)
+// read back as `undefined` with no migration beyond the version bump.
+export interface FileHistoryProvenance {
+  flowDirection?: number;        // ESPI flow direction, for merge compatibility
+  commodity?: number;            // ESPI commodity, for merge compatibility
+  intervalLength?: number;       // seconds per reading
+  isMerged?: boolean;            // produced by the merge feature — badge it
+  sources?: MergeSourceMeta[];   // provenance of a merged entry
+}
+
+export interface FileHistoryEntry extends FileHistoryProvenance {
   id: number;
   fileName: string;
   uploadedAt: number;
@@ -16,8 +27,19 @@ export type FileHistoryMeta = Omit<FileHistoryEntry, 'data'>;
 
 const DB_NAME = 'energy-meter';
 const STORE_NAME = 'file-history';
-const DB_VERSION = 1;
+// v2: added optional provenance fields (flowDirection/commodity/intervalLength/
+// isMerged/sources). The upgrade is a no-op — new fields default to undefined on
+// existing rows — but the version bump lets the browser run onupgradeneeded.
+const DB_VERSION = 2;
 const MAX_ENTRIES = 5;
+
+// Drop undefined-valued keys so optional provenance never bloats stored rows.
+function stripUndefined(obj?: FileHistoryProvenance): FileHistoryProvenance {
+  if (!obj) return {};
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined),
+  );
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -61,6 +83,7 @@ export function useFileHistory() {
     fileName: string,
     data: DataPoint[],
     resolution: string,
+    provenance?: FileHistoryProvenance,
   ) => {
     if (!data.length) return;
     try {
@@ -72,6 +95,7 @@ export function useFileHistory() {
         endDate: data[data.length - 1].timestamp,
         recordCount: data.length,
         resolution,
+        ...stripUndefined(provenance),
         data,
       };
       await new Promise<void>((resolve, reject) => {
