@@ -12,29 +12,30 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 ### Importing Data
 
-- **Green Button XML & CSV Support** — Import energy data from utility providers using the standard Green Button XML format, or from common CSV exports with auto-detected date/time, usage, and unit columns
-- **Recent Files** — Previously loaded files are saved locally in your browser so you can reopen them in one click without re-importing
-- **Merge Datasets** — Combine multiple saved files into a single continuous history, with automatic de-duplication of overlapping intervals, gap detection, and compatibility checks before merging
-- **Demo Data** — Try the app with realistic sample data spanning 2 years
+- **Green Button XML & CSV Support**: Import energy data from utility providers using the standard Green Button XML format, or from common CSV exports with auto-detected date/time, usage, and unit columns
+- **Recent Files**: Previously loaded files are saved locally in your browser so you can reopen them in one click without re-importing
+- **Merge Datasets**: Combine multiple saved files into a single continuous history, with automatic de-duplication of overlapping intervals, gap detection, and compatibility checks before merging
+- **Export Data**: Export readings to CSV or JSON with selectable columns and optional grouping (hourly, daily, weekly, monthly). A re-loadable JSON option saves a lossless copy of the loaded data (preserving exact timestamps, energy, and cost) that can be re-imported later and is typically much smaller than the original Green Button XML
+- **Demo Data**: Try the app with realistic sample data spanning 2 years
 
 ### Visualization & Analysis
 
-- **Interactive Charts** — Visualize consumption with zoomable, responsive area charts
-- **Multi-Resolution Views** — View data at raw, hourly, daily, or weekly aggregations
-- **Peak Demand Metrics** — Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
-- **Analysis Dashboard** — Analyze patterns by hour, day of week, or month with timeline and average views
-- **Guided Insights** — Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
-- **Data Table** — Browse raw readings with pagination
+- **Interactive Charts**: Visualize consumption with zoomable, responsive area charts
+- **Multi-Resolution Views**: View data at raw, hourly, daily, or weekly aggregations
+- **Peak Demand Metrics**: Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
+- **Analysis Dashboard**: Analyze patterns by hour, day of week, or month with timeline and average views
+- **Guided Insights**: Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
+- **Data Table**: Browse raw readings with pagination
 
 ### Cost & Weather
 
-- **Cost Tracking** — Toggle between energy usage and cost metrics with automatic rate calculations
-- **Weather Overlay** — Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
+- **Cost Tracking**: Toggle between energy usage and cost metrics with automatic rate calculations
+- **Weather Overlay**: Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
 
 ### Display & Storage
 
-- **Flexible Units** — Switch between Wh, kWh, and MWh display units
-- **Local Caching** — Weather data is cached in IndexedDB to minimize API requests
+- **Flexible Units**: Switch between Wh, kWh, and MWh display units
+- **Local Caching**: Weather data is cached in IndexedDB to minimize API requests
 
 ## Tech Stack
 
