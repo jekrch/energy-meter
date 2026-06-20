@@ -6,10 +6,12 @@ import { ExportModal } from './components/export/ExportModal';
 import { type TimeRange, type MetricMode } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { createBrushData } from './utils/dataUtils';
+import { mergeDatasets, detectMergeWarnings, buildMergeName, type MergePreview, type MergeSource } from './utils/mergeData';
+import { downloadNativeFile } from './utils/nativeFormat';
 import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { toDemandKW, formatDemandValue } from './utils/demandUnits';
 import { aggregateWeatherData } from './utils/weatherData';
-import { ROWS_PER_PAGE, BRUSH_POINTS, RATE_TOLERANCE_PERCENT } from './constants';
+import { ROWS_PER_PAGE, BRUSH_POINTS, RATE_TOLERANCE_PERCENT, BLOCK_DAILY_THRESHOLD } from './constants';
 
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
@@ -289,6 +291,52 @@ export default function App() {
     }
   }, [loadEntry, loadFromHistory]);
 
+  // Load the selected history entries, merge them, and assemble a preview for
+  // the modal to confirm. Returns null if fewer than two entries resolve.
+  const handleMergePreview = useCallback(async (ids: number[]): Promise<MergePreview | null> => {
+    const loaded = (await Promise.all(ids.map((id) => loadEntry(id))))
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+    if (loaded.length < 2) return null;
+
+    const sources: MergeSource[] = loaded.map((e) => ({ fileName: e.fileName, data: e.data }));
+    const result = mergeDatasets(sources);
+    const warnings = detectMergeWarnings(sources);
+
+    // Keep the shared resolution when all sources agree; otherwise fall back to
+    // the same RAW/DAILY threshold the upload pipeline uses.
+    const resolutions = new Set(loaded.map((e) => e.resolution));
+    const resolution = resolutions.size === 1
+      ? loaded[0].resolution
+      : (result.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW');
+
+    return {
+      ...result,
+      warnings,
+      resolution,
+      defaultName: buildMergeName(loaded.map((e) => e.fileName)),
+    };
+  }, [loadEntry]);
+
+  // Confirm a merge: load it into the app, save it back to history (so it lands
+  // in Recent Files), and optionally download a re-loadable native .json copy.
+  const handleMergeConfirm = useCallback(async (
+    preview: MergePreview,
+    name: string,
+    actions: { load: boolean; download: boolean },
+  ) => {
+    if (actions.load) {
+      loadFromHistory(preview.data, name, preview.resolution);
+      saveEntry(name, preview.data, preview.resolution);
+    }
+    if (actions.download) {
+      downloadNativeFile(preview.data, {
+        fileName: name,
+        resolution: preview.resolution,
+        sources: preview.sources,
+      });
+    }
+  }, [loadFromHistory, saveEntry]);
+
   return (
     <AnimatedBackground>
       <div className="min-h-screen text-slate-100 font-sans selection:bg-emerald-500/30">
@@ -486,6 +534,8 @@ export default function App() {
             onLoad={handleLoadFromHistory}
             onDelete={deleteEntry}
             onClose={() => setShowRecentFiles(false)}
+            onMergePreview={handleMergePreview}
+            onMergeConfirm={handleMergeConfirm}
           />
         )}
       </div>

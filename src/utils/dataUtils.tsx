@@ -3,6 +3,7 @@ import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate } from './formatters';
 import { toDemandKW } from './demandUnits';
+import { tryParseNativeJson } from './nativeFormat';
 import { MAX_CHART_POINTS } from '../constants';
 
 const CHUNK_SIZE = 2000;
@@ -729,12 +730,18 @@ export const parseGreenButtonCsv = (csvText: string): ParsedGreenButton => {
   };
 };
 
-// Dispatch an uploaded Green Button file to the XML or CSV parser based on its
-// leading bytes.
+// Dispatch an uploaded Green Button file to the XML, native-JSON, or CSV parser
+// based on its leading bytes. A `{`-leading file is tried as our native merge
+// format first; tryParseNativeJson returns null for any non-native JSON so it
+// falls through to the CSV path harmlessly.
 export const parseGreenButtonFile = (textData: string): ParsedGreenButton => {
   const head = textData.trimStart();
-  const isXml = head.startsWith('<');
-  return isXml ? parseGreenButtonXML(textData) : parseGreenButtonCsv(textData);
+  if (head.startsWith('<')) return parseGreenButtonXML(textData);
+  if (head.startsWith('{')) {
+    const native = tryParseNativeJson(textData);
+    if (native) return native;
+  }
+  return parseGreenButtonCsv(textData);
 };
 
 // Mock Data Generator - realistic energy patterns with stepped rate increases
