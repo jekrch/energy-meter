@@ -56,7 +56,7 @@ export const StatCard = React.memo(function StatCard({ icon, label, value, unit,
                     <span
                         className={`
                             font-mono font-bold text-slate-50 tracking-tight wrap-break-word leading-tight slashed-zero tabular-nums
-                            ${isLongValue ? 'text-base sm:text-lg md:text-xl' : 'text-xl sm:text-2xl'}
+                            ${isLongValue ? 'text-base sm:text-lg md:text-xl' : 'text-lg sm:text-xl'}
                         `}
                     >
                         {value}

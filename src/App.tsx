@@ -339,7 +339,7 @@ export default function App() {
                           <LightbulbIcon className="w-5 h-5 text-amber-950" />
                         </div>
                         <div className="text-left flex-1 min-w-0">
-                          <h3 className="text-sm sm:text-base font-bold text-slate-300! group-hover:text-white! transition-colors">
+                          <h3 className="text-sm sm:text-base font-medium text-slate-300! group-hover:text-white! transition-colors">
                             Answer Questions About Your Usage
                           </h3>
                           <p className="text-xs sm:text-[13px] text-slate-400 group-hover:text-slate-300 transition-colors mt-0.5">

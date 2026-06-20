@@ -85,7 +85,7 @@ export const WeatherSettings = React.memo(function WeatherSettings({
       <div 
         ref={dropdownRef}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-[380px] md:max-w-lg transition-[opacity,transform] duration-150 ease-out ${
+        className={`w-full max-w-[380px] md:max-w-lg transition-all duration-150 ease-out ${
           isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95'
         }`}
       >
