@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Modal, type ModalHandle } from '../common/Modal';
-import { Download, X, FileJson, FileSpreadsheet, Check } from 'lucide-react';
+import { Download, X, FileJson, FileSpreadsheet, Check, RefreshCw } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { PillGroup, PillButton } from '../common/PillButton';
 import type { DataPoint } from '../../types';
@@ -26,6 +26,7 @@ import {
   rowToCsv,
   type AggBucket,
 } from '../../utils/exportUtils';
+import { downloadNativeFile, sanitizeFilename } from '../../utils/nativeFormat';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,10 @@ interface ExportModalProps {
   /** Raw hourly weather data — NOT the resolution-aggregated map */
   hourlyWeatherData?: HourlyWeatherData[];
   temperatureUnit?: 'C' | 'F';
+  /** Name of the currently loaded file — used for the native re-loadable export */
+  fileName?: string;
+  /** Current resolution — preserved in the native re-loadable export */
+  resolution?: string;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -46,6 +51,8 @@ export const ExportModal = React.memo(function ExportModal({
   weatherAvailable,
   hourlyWeatherData,
   temperatureUnit = 'F',
+  fileName,
+  resolution = 'RAW',
 }: ExportModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('csv');
@@ -151,7 +158,42 @@ export const ExportModal = React.memo(function ExportModal({
   // ── Export handler ──────────────────────────────────────────────────────
 
   const handleExport = useCallback(async () => {
-    if (enabledColumns.length === 0 || isExporting) return;
+    if (isExporting || data.length === 0) return;
+
+    // Native / re-loadable export: a lossless copy of the raw DataPoints in the
+    // same JSON format produced by the merge feature, ignoring column/grouping
+    // choices (which don't apply). Re-loads through the normal upload pipeline.
+    if (format === 'native') {
+      setIsExporting(true);
+      setExportProgress(0);
+      try {
+        const name = fileName?.replace(/\.[^.]+$/, '') || 'energy-data';
+        downloadNativeFile(
+          data,
+          {
+            fileName: name,
+            resolution,
+            sources: [{
+              fileName: name,
+              startDate: data[0].timestamp,
+              endDate: data[data.length - 1].timestamp,
+              recordCount: data.length,
+            }],
+          },
+          `energy-${sanitizeFilename(name)}.json`,
+        );
+        setExportProgress(100);
+        await new Promise(r => setTimeout(r, 350));
+      } catch (err) {
+        console.error('Export failed:', err);
+      }
+      setIsExporting(false);
+      setExportProgress(0);
+      closeDropdown();
+      return;
+    }
+
+    if (enabledColumns.length === 0) return;
 
     setIsExporting(true);
     setExportProgress(0);
@@ -312,7 +354,7 @@ export const ExportModal = React.memo(function ExportModal({
       setIsExporting(false);
       setExportProgress(0);
     }
-  }, [enabledColumns, isExporting, data, format, groupBy, energyUnit, temperatureUnit, hourlyWeatherData, includeHeaders, celsiusToUnit, closeDropdown, rateUnitConfig]);
+  }, [enabledColumns, isExporting, data, format, groupBy, energyUnit, temperatureUnit, hourlyWeatherData, includeHeaders, celsiusToUnit, closeDropdown, rateUnitConfig, fileName, resolution]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -391,41 +433,77 @@ export const ExportModal = React.memo(function ExportModal({
                   <FileJson className="w-3.5 h-3.5" />
                   JSON
                 </PillButton>
+                <PillButton
+                  active={format === 'native'}
+                  onClick={() => setFormat('native')}
+                  disabled={isExporting}
+                  activeClassName="bg-emerald-500/15 text-emerald-400"
+                  className="flex items-center justify-center gap-1.5 flex-1 px-3 py-2 text-xs rounded-md"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Re-loadable
+                </PillButton>
               </PillGroup>
             </div>
 
             {/* Group by */}
-            <div>
-              <label className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">
-                Group By
-              </label>
-              <Dropdown
-                options={GROUP_OPTIONS}
-                value={groupBy}
-                onChange={(v) => !isExporting && setGroupBy(v)}
-                disabled={isExporting}
-              />
-            </div>
+            {format !== 'native' && (
+              <div>
+                <label className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">
+                  Group By
+                </label>
+                <Dropdown
+                  options={GROUP_OPTIONS}
+                  value={groupBy}
+                  onChange={(v) => !isExporting && setGroupBy(v)}
+                  disabled={isExporting}
+                />
+              </div>
+            )}
           </div>
 
           {/* Columns header */}
-          <div className="px-4 pt-2 pb-1 flex-shrink-0">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                Columns
-              </label>
-              {!isExporting && (
-                <button
-                  onClick={toggleAll}
-                  className="text-[10px] text-slate-500 hover:text-emerald-400 transition-colors"
-                >
-                  {allEnabled ? 'Deselect all' : 'Select all'}
-                </button>
-              )}
+          {format !== 'native' && (
+            <div className="px-4 pt-2 pb-1 flex-shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  Columns
+                </label>
+                {!isExporting && (
+                  <button
+                    onClick={toggleAll}
+                    className="text-[10px] text-slate-500 hover:text-emerald-400 transition-colors"
+                  >
+                    {allEnabled ? 'Deselect all' : 'Select all'}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Native export explainer */}
+          {format === 'native' && (
+            <div className="px-4 pt-2 pb-1 overflow-y-auto min-h-0 flex-1">
+              <div className="bg-sunken border border-line rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-slate-200">
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                  Re-loadable copy
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  Exports a lossless <span className="text-slate-300 font-mono">.json</span> copy of
+                  the loaded data that you can re-upload later — preserving exact timestamps, energy,
+                  and cost with no unit conversion. This is the same format used when saving merged
+                  datasets. Column and grouping options don't apply.
+                </p>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  It's also typically much smaller than the original Green Button XML files.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Columns list — scrollable */}
+          {format !== 'native' && (
           <div
             ref={scrollContainerRef}
             className="px-4 overflow-y-auto min-h-0 flex-1"
@@ -494,6 +572,7 @@ export const ExportModal = React.memo(function ExportModal({
               </div>
             )}
           </div>
+          )}
 
           {/* Footer: options + export button */}
           <div className="px-4 pt-2 pb-4 space-y-3 flex-shrink-0 border-t border-header-line">
@@ -541,13 +620,15 @@ export const ExportModal = React.memo(function ExportModal({
             ) : (
               <button
                 onClick={handleExport}
-                disabled={enabledColumns.length === 0}
+                disabled={format !== 'native' && enabledColumns.length === 0}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:bg-sunken disabled:text-slate-600 disabled:border-line rounded-lg transition-colors disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
-                Export {enabledColumns.length > 0
-                  ? `${enabledColumns.length} column${enabledColumns.length !== 1 ? 's' : ''}`
-                  : ''}
+                {format === 'native'
+                  ? 'Export re-loadable JSON'
+                  : `Export ${enabledColumns.length > 0
+                      ? `${enabledColumns.length} column${enabledColumns.length !== 1 ? 's' : ''}`
+                      : ''}`}
               </button>
             )}
           </div>

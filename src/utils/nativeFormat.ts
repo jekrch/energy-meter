@@ -118,7 +118,7 @@ export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
 }
 
 // Sanitize a user-supplied merge name into a safe filename fragment.
-function sanitizeFilename(name: string): string {
+export function sanitizeFilename(name: string): string {
   const cleaned = name
     .trim()
     .replace(/[^a-z0-9]+/gi, '-')
@@ -129,13 +129,17 @@ function sanitizeFilename(name: string): string {
 
 // Build the native JSON and trigger a browser download (mirrors the blob /
 // object-URL / anchor pattern used by ExportModal).
-export function downloadNativeFile(data: DataPoint[], opts: SerializeNativeOptions): void {
+export function downloadNativeFile(
+  data: DataPoint[],
+  opts: SerializeNativeOptions,
+  downloadFileName?: string,
+): void {
   const json = serializeNativeFile(data, opts);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `energy-merged-${sanitizeFilename(opts.fileName)}.json`;
+  a.download = downloadFileName ?? `energy-merged-${sanitizeFilename(opts.fileName)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

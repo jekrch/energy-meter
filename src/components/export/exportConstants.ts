@@ -1,6 +1,6 @@
 // ─── Export configuration types ─────────────────────────────────────────────
 
-export type ExportFormat = 'json' | 'csv';
+export type ExportFormat = 'json' | 'csv' | 'native';
 export type ExportGroupBy = 'none' | 'hour' | 'day' | 'week' | 'month';
 
 /**

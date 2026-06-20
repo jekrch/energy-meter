@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   History, X, Calendar, Hash, Loader2, Trash2, ChevronRight,
-  GitMerge, Check, Square, CheckSquare, AlertTriangle, ArrowLeft, Ban,
+  GitMerge, Check, Square, CheckSquare, AlertTriangle, ArrowLeft, Ban, Upload,
 } from 'lucide-react';
 import { Modal, type ModalHandle } from './Modal';
 import type { FileHistoryMeta } from '../../hooks/useFileHistory';
@@ -11,6 +11,7 @@ import { formatShortDate } from '../../utils/formatters';
 interface RecentFilesModalProps {
   entries: FileHistoryMeta[];
   onLoad: (id: number) => Promise<void>;
+  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onDelete: (id: number) => void;
   onClose: () => void;
   onMergePreview?: (ids: number[]) => Promise<MergePreview | null>;
@@ -37,6 +38,7 @@ function formatRelativeDate(ts: number): string {
 export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   entries,
   onLoad,
+  onUpload,
   onDelete,
   onClose,
   onMergePreview,
@@ -44,6 +46,11 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
 }) => {
   const modalRef = useRef<ModalHandle>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpload(e);
+    modalRef.current?.close();
+  };
 
   // Multi-select / merge state
   const mergeEnabled = Boolean(onMergePreview && onMergeConfirm);
@@ -190,8 +197,13 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   const renderList = () => (
     <div className="overflow-y-auto flex-1 p-3 space-y-2">
       {entries.length === 0 ? (
-        <div className="py-10 text-center text-slate-500 text-sm">
-          No files yet — upload one to get started.
+        <div className="py-10 flex flex-col items-center gap-4 text-center text-slate-500 text-sm">
+          <p>No files yet — upload one to get started.</p>
+          <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors">
+            <Upload className="w-3.5 h-3.5" />
+            Upload file
+            <input type="file" accept=".xml,.csv,.json" onChange={handleUpload} className="hidden" />
+          </label>
         </div>
       ) : (
         entries.map((entry) => {
@@ -357,19 +369,28 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               </button>
             </div>
           ) : (
-            <div className="px-4 py-2.5 bg-sunken border-t border-header-line flex-shrink-0 flex items-center justify-between gap-3">
-              <p className="text-[10px] text-slate-500 flex-1">
+            <div className="px-4 py-2.5 bg-sunken border-t border-header-line flex-shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+              <p className="text-[10px] text-slate-500 sm:flex-1">
                 Your data is processed and stored entirely in this browser. Nothing is uploaded to any server.
               </p>
-              {mergeEnabled && entries.length >= 2 && (
-                <button
-                  onClick={() => setSelectMode(true)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-slate-300 hover:text-emerald-300 border border-line hover:border-emerald-500/40 text-xs font-medium rounded-lg transition-colors"
-                >
-                  <GitMerge className="w-3.5 h-3.5" />
-                  Merge files
-                </button>
-              )}
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {entries.length > 0 && (
+                  <label className="shrink-0 cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-slate-300 hover:text-emerald-300 border border-line hover:border-emerald-500/40 text-xs font-medium rounded-lg transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload
+                    <input type="file" accept=".xml,.csv,.json" onChange={handleUpload} className="hidden" />
+                  </label>
+                )}
+                {mergeEnabled && entries.length >= 2 && (
+                  <button
+                    onClick={() => setSelectMode(true)}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-slate-300 hover:text-emerald-300 border border-line hover:border-emerald-500/40 text-xs font-medium rounded-lg transition-colors"
+                  >
+                    <GitMerge className="w-3.5 h-3.5" />
+                    Merge files
+                  </button>
+                )}
+              </div>
             </div>
           )}
     </Modal>

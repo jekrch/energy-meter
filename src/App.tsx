@@ -482,6 +482,8 @@ export default function App() {
                               weatherAvailable={weather.enabled && weather.hourlyData.length > 0}
                               hourlyWeatherData={weather.hourlyData}
                               temperatureUnit={temperatureUnit}
+                              fileName={fileName ?? undefined}
+                              resolution={resolution}
                             />
                           </div>
                         )}
@@ -563,6 +565,7 @@ export default function App() {
           <RecentFilesModal
             entries={historyEntries}
             onLoad={handleLoadFromHistory}
+            onUpload={handleFileUpload}
             onDelete={deleteEntry}
             onClose={() => setShowRecentFiles(false)}
             onMergePreview={handleMergePreview}
