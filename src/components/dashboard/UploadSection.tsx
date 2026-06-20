@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import {
     Upload, FileText, AlertCircle, Info, ChevronDown, ChevronUp,
-    Download, Lock, Github, ExternalLink, User, Scissors, Zap, Building2,
+    Download, Lock, Github, ExternalLink, User, Scissors, Zap, Building2, History,
 } from 'lucide-react';
 
 interface UploadSectionProps {
     onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onLoadSample: () => void;
+    onShowHistory?: () => void;
+    historyCount?: number;
     loading: boolean;
     error: string | null;
 }
 
-export const UploadSection = React.memo(function UploadSection({ onUpload, onLoadSample, loading, error }: UploadSectionProps) {
+export const UploadSection = React.memo(function UploadSection({ onUpload, onLoadSample, onShowHistory, historyCount = 0, loading, error }: UploadSectionProps) {
     const [showInfo, setShowInfo] = useState(false);
     const [activeTab, setActiveTab] = useState<'format' | 'privacy'>('format');
 
@@ -21,7 +23,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                 <div className="bg-surface-3 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-line-2">
                     <Upload className="w-10 h-10 text-emerald-500" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2 text-slate-100">Upload Energy Data</h2>
+                <h2 className="text-2xl font-bold mb-2 text-slate-100">Load Energy Data</h2>
                 
                 {/* responsive text switching */}
                 <p className="text-emerald-400/90 font-medium mb-2">
@@ -38,13 +40,26 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                 )}
 
                 <div className="flex flex-col gap-4">
-                    <label className="relative cursor-pointer group">
-                        <div className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 transition-colors flex items-center justify-center gap-2">
-                            <FileText className="w-4 h-4" />
-                            {loading ? 'Processing...' : 'Choose XML or CSV File'}
-                        </div>
-                        <input type="file" accept=".xml,.csv" onChange={onUpload} className="hidden" disabled={loading} />
-                    </label>
+                    <div className="flex gap-2">
+                        <label className="relative cursor-pointer group flex-1">
+                            <div className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 transition-colors flex items-center justify-center gap-2">
+                                <FileText className="w-4 h-4" />
+                                {loading ? 'Processing...' : 'Choose XML or CSV File'}
+                            </div>
+                            <input type="file" accept=".xml,.csv" onChange={onUpload} className="hidden" disabled={loading} />
+                        </label>
+                        {historyCount > 0 && onShowHistory && (
+                            <button
+                                onClick={onShowHistory}
+                                disabled={loading}
+                                title={`${historyCount} recent file${historyCount !== 1 ? 's' : ''}`}
+                                className="shrink-0 flex items-center gap-1.5 px-3 bg-surface-3 border border-line-2 hover:bg-white/5 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl transition-colors disabled:opacity-40"
+                            >
+                                <History className="w-4 h-4" />
+                                <span className="text-xs font-medium">{historyCount}</span>
+                            </button>
+                        )}
+                    </div>
 
                     {/* Demo section with friendly nudge */}
                     <div className="relative mt-2">

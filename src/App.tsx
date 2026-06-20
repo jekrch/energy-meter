@@ -16,6 +16,7 @@ import { useAnalysis } from './hooks/useAnalysis';
 import { useWeather } from './hooks/useWeather';
 import { useEnergyData } from './hooks/useEnergyData';
 import { useChartProcessing } from './hooks/useChartProcessing';
+import { useFileHistory } from './hooks/useFileHistory';
 
 // Components
 import { StatCard } from './components/common/StatCard';
@@ -32,6 +33,7 @@ import { RateChangesCard } from './components/dashboard/RateChangesCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 import { BlockPickerModal } from './components/common/BlockPickerModal';
+import { RecentFilesModal } from './components/common/RecentFilesModal';
 
 export default function App() {
   // UI State
@@ -40,6 +42,10 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [metricMode, setMetricMode] = useState<MetricMode>('cost');
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
+
+  // File history (IndexedDB)
+  const { entries: historyEntries, saveEntry, loadEntry, deleteEntry } = useFileHistory();
+  const [showRecentFiles, setShowRecentFiles] = useState(false);
 
   // Dataset, upload pipeline, and data bounds
   const {
@@ -53,8 +59,15 @@ export default function App() {
     handleSelectBlock,
     handleCancelBlockPicker,
     loadSampleData,
+    loadFromHistory,
     reset,
-  } = useEnergyData({ setResolution, onLoadStart: () => setPage(1) });
+  } = useEnergyData({
+    setResolution,
+    onLoadStart: () => setPage(1),
+    onDataLoaded: useCallback((name: string, data: Parameters<typeof saveEntry>[1], res: string) => {
+      saveEntry(name, data, res);
+    }, [saveEntry]),
+  });
 
   // Time State
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
@@ -268,6 +281,14 @@ export default function App() {
 
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
 
+  const handleLoadFromHistory = useCallback(async (id: number) => {
+    const entry = await loadEntry(id);
+    if (entry) {
+      loadFromHistory(entry.data, entry.fileName, entry.resolution);
+      setShowRecentFiles(false);
+    }
+  }, [loadEntry, loadFromHistory]);
+
   return (
     <AnimatedBackground>
       <div className="min-h-screen text-slate-100 font-sans selection:bg-emerald-500/30">
@@ -293,7 +314,7 @@ export default function App() {
             {rawData && (
               <button onClick={reset} className="shrink-0 flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
                 <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Upload</span>
+                <span className="hidden sm:inline">Load</span>
               </button>
             )}
           </div>
@@ -306,7 +327,14 @@ export default function App() {
                 <PulseLoader variant="energy" size="lg" message="Parsing Green Button XML..." subMessage="Extracting energy readings" />
               </div>
             ) : (
-              <UploadSection onUpload={handleFileUpload} onLoadSample={loadSampleData} loading={loading} error={error} />
+              <UploadSection
+                onUpload={handleFileUpload}
+                onLoadSample={loadSampleData}
+                onShowHistory={() => setShowRecentFiles(true)}
+                historyCount={historyEntries.length}
+                loading={loading}
+                error={error}
+              />
             )
           ) : (
             stats && (
@@ -450,6 +478,14 @@ export default function App() {
             blocks={pendingBlocks}
             onSelect={handleSelectBlock}
             onCancel={handleCancelBlockPicker}
+          />
+        )}
+        {showRecentFiles && (
+          <RecentFilesModal
+            entries={historyEntries}
+            onLoad={handleLoadFromHistory}
+            onDelete={deleteEntry}
+            onClose={() => setShowRecentFiles(false)}
           />
         )}
       </div>

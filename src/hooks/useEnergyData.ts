@@ -10,12 +10,14 @@ interface UseEnergyDataOptions {
   setResolution: (resolution: string) => void;
   // Called when a new dataset starts loading (App resets the table page).
   onLoadStart?: () => void;
+  // Called after a fresh file is parsed successfully (not triggered by history loads).
+  onDataLoaded?: (fileName: string, data: DataPoint[], resolution: string) => void;
 }
 
 // Owns the loaded dataset and everything that produces it: upload/sample/block
 // handling, parse loading + error state, and the data time bounds. Extracted
 // from App so the upload pipeline is isolated from the rendering concerns.
-export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptions) {
+export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseEnergyDataOptions) {
   const [rawData, setRawData] = useState<DataPoint[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +31,11 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
     }
   }, [rawData]);
 
-  const applyBlock = (block: ParsedBlock) => {
+  const applyBlock = (block: ParsedBlock, name: string) => {
+    const res = block.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW';
     setRawData(block.data);
-    setResolution(block.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW');
+    setResolution(res);
+    onDataLoaded?.(name, block.data, res);
   };
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -44,7 +48,7 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
       try {
         const { blocks } = parseGreenButtonFile(ev.target?.result as string);
         if (blocks.length === 0) throw new Error('No IntervalReading data found.');
-        if (blocks.length === 1) applyBlock(blocks[0]);
+        if (blocks.length === 1) applyBlock(blocks[0], file.name);
         else setPendingBlocks(blocks);
       }
       catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
@@ -54,8 +58,8 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
   };
 
   const handleSelectBlock = (idx: number) => {
-    if (!pendingBlocks) return;
-    applyBlock(pendingBlocks[idx]);
+    if (!pendingBlocks || !fileName) return;
+    applyBlock(pendingBlocks[idx], fileName);
     setPendingBlocks(null);
   };
 
@@ -73,6 +77,15 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
     setRawData(null); setFileName(null); setError(null);
   };
 
+  const loadFromHistory = (data: DataPoint[], name: string, savedResolution: string) => {
+    onLoadStart?.();
+    setFileName(name);
+    setRawData(data);
+    setResolution(savedResolution);
+    setError(null);
+    setPendingBlocks(null);
+  };
+
   return {
     rawData,
     loading,
@@ -84,6 +97,7 @@ export function useEnergyData({ setResolution, onLoadStart }: UseEnergyDataOptio
     handleSelectBlock,
     handleCancelBlockPicker,
     loadSampleData,
+    loadFromHistory,
     reset,
   };
 }
