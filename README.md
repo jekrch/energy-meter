@@ -6,7 +6,8 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 [gbmeter.com](https://gbmeter.com)
 
-<img width="450" alt="image" src="https://github.com/user-attachments/assets/3bdce2a0-e506-49a9-abe1-2bd064c4a9dd" />
+<img width="450" alt="image" src="https://github.com/user-attachments/assets/feb8093a-517b-4256-bf07-739b5246e213" />
+
 
 ## Features
 
