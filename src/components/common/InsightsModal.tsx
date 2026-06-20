@@ -235,9 +235,9 @@ export const InsightsModal = React.memo(function InsightsModal({
                     <button
                       key={preset.id}
                       onClick={() => handleSelectInsight(preset)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 bg-sunken hover:bg-white/5 border border-line hover:border-line-2 rounded-lg transition-colors group text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface-2 hover:bg-surface-3 border border-line hover:border-line-2 rounded-lg transition-colors group text-left"
                     >
-                      <div className="p-1.5 bg-surface-2 group-hover:bg-white/10 rounded-md text-slate-400 group-hover:text-amber-400 transition-colors flex-shrink-0">
+                      <div className="p-1.5 bg-surface-3 group-hover:bg-white/10 rounded-md text-slate-400 group-hover:text-amber-400 transition-colors flex-shrink-0">
                         {preset.icon}
                       </div>
                       <div className="flex-1 min-w-0">
