@@ -332,21 +332,21 @@ export default function App() {
                   {(openModal) => (
                     <button
                       onClick={openModal}
-                      className="w-full group bg-linear-to-r from-surface-2 from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 transition-colors duration-300"
+                      className="w-full group bg-linear-to-r from-surface-2 from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-3.5 sm:p-5 transition-colors duration-300"
                     >
-                      <div className="flex items-center gap-3 sm:gap-4">
+                      <div className="flex items-center gap-2.5 sm:gap-4">
                         <div className="shrink-0 bg-linear-to-br from-amber-500 to-amber-400 w-10 h-10 sm:w-[42px] sm:h-[42px] rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
                           <LightbulbIcon className="w-5 h-5 text-amber-950" />
                         </div>
                         <div className="text-left flex-1 min-w-0">
-                          <h3 className="text-sm sm:text-base font-medium text-slate-300! group-hover:text-white! transition-colors">
+                          <h3 className="text-sm sm:text-base font-medium text-slate-300! group-hover:text-white! transition-colors whitespace-nowrap truncate">
                             Answer Questions About Your Usage
                           </h3>
                           <p className="text-xs sm:text-[13px] text-slate-400 group-hover:text-slate-300 transition-colors mt-0.5">
                             Tap to explore guided insights like peak hours, seasonal trends, and cost patterns
                           </p>
                         </div>
-                        <ChevronRight className="shrink-0 w-5 h-5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150" />
+                        <ChevronRight className="shrink-0 w-5 h-5 -ml-1 sm:ml-0 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150" />
                       </div>
                     </button>
                   )}

@@ -150,26 +150,26 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
   return (
     <div className="bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-header-line flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="bg-violet-500/10 p-1.5 rounded-lg">
+      <div className="px-4 py-3 border-b border-header-line flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="bg-violet-500/10 p-1.5 rounded-lg shrink-0">
             <DollarSign className="w-4 h-4 text-violet-400" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold text-slate-100">Rate Changes</h3>
-            <p className="text-xs text-slate-500">Detected from cost/usage ratio</p>
+            <p className="text-xs text-slate-500 truncate">Detected from cost/usage ratio</p>
           </div>
         </div>
-        
+
         {/* Summary Stats */}
-        <div className="flex items-center gap-4 text-xs">
-          <div className="text-right">
+        <div className="flex items-center gap-4 text-xs shrink-0">
+          <div className="text-left sm:text-right">
             <span className="text-slate-500">Avg Rate</span>
             <p className="text-violet-400 font-mono tabular-nums font-medium">{formatRate(avgRate)}</p>
           </div>
-          <div className="text-right">
+          <div className="text-left sm:text-right">
             <span className="text-slate-500">Range</span>
-            <p className="text-slate-300 font-mono tabular-nums font-medium">
+            <p className="text-slate-300 font-mono tabular-nums font-medium whitespace-nowrap">
               {formatRate(minRate)} – {formatRate(maxRate)}
             </p>
           </div>
@@ -221,9 +221,9 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
                       : 'bg-emerald-500/5 border-emerald-500/20'
                   }`}
                 >
-                  <div className={`p-1.5 rounded ${
-                    change.direction === 'increase' 
-                      ? 'bg-red-500/10' 
+                  <div className={`p-1.5 rounded shrink-0 ${
+                    change.direction === 'increase'
+                      ? 'bg-red-500/10'
                       : 'bg-emerald-500/10'
                   }`}>
                     {change.direction === 'increase' 
@@ -273,21 +273,21 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
                   {yoyComparisons.map((comp, idx) => (
                     <div
                       key={idx}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border ${
+                      className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 p-2.5 rounded-lg border ${
                         comp.percentChange > 0
                           ? 'bg-red-500/5 border-red-500/20'
                           : 'bg-emerald-500/5 border-emerald-500/20'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xs text-slate-400">
                           {getSeasonLabelShort(comp.season)}
                         </span>
-                        <span className="text-xs text-slate-500 font-mono tabular-nums">
+                        <span className="text-xs text-slate-500 font-mono tabular-nums whitespace-nowrap">
                           {comp.year1} → {comp.year2}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 ml-auto">
                         <span className="text-xs text-slate-400 font-mono tabular-nums">
                           {formatRate(comp.rate1)}
                         </span>
@@ -297,7 +297,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
                         }`}>
                           {formatRate(comp.rate2)}
                         </span>
-                        <span className={`text-xs font-mono tabular-nums px-1.5 py-0.5 rounded ${
+                        <span className={`text-xs font-mono tabular-nums px-1.5 py-0.5 rounded whitespace-nowrap ${
                           comp.percentChange > 0
                             ? 'bg-red-500/10 text-red-400'
                             : 'bg-emerald-500/10 text-emerald-400'
