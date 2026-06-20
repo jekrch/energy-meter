@@ -20,17 +20,23 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
     return (
         <div className="max-w-xl mx-auto mt-0 pb-12">
             <div className="bg-surface rounded-2xl border border-line p-8 text-center transition-colors duration-300">
-                <div className="bg-surface-3 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-line-2">
-                    <Upload className="w-10 h-10 text-emerald-500" />
+                <div className="rise-in relative w-20 h-20 mx-auto mb-6">
+                    {/* expanding electric halo — two staggered rings, start after the entrance settles */}
+                    <span className="energy-ping absolute inset-0 rounded-full ring-1 ring-emerald-500/50" style={{ animationDelay: '600ms' }} />
+                    <span className="energy-ping absolute inset-0 rounded-full ring-1 ring-emerald-500/50" style={{ animationDelay: '1100ms' }} />
+                    {/* icon well */}
+                    <div className="relative w-20 h-20 rounded-full bg-surface-3 flex items-center justify-center ring-1 ring-line-2">
+                        <Upload className="w-10 h-10 text-emerald-500" />
+                    </div>
                 </div>
-                <h2 className="text-2xl font-bold mb-2 text-slate-100">Load Energy Data</h2>
-                
+                <h2 className="rise-in text-2xl font-bold mb-2 text-slate-100" style={{ animationDelay: '70ms' }}>Load Energy Data</h2>
+
                 {/* responsive text switching */}
-                <p className="text-emerald-400/90 font-medium mb-2">
+                <p className="rise-in text-emerald-400/90 font-medium mb-2" style={{ animationDelay: '140ms' }}>
                     <span className="">Visualize and understand your usage</span>
                 </p>
 
-                <p className="text-slate-500 text-sm mb-8">Supports Green Button XML files<span className="hidden sm:inline"> with interval readings</span></p>
+                <p className="rise-in text-slate-500 text-sm mb-8" style={{ animationDelay: '140ms' }}>Supports Green Button XML files<span className="hidden sm:inline"> with interval readings</span></p>
 
                 {error && (
                     <div className="mb-6 p-4 bg-red-900/20 border border-red-900/50 rounded-lg flex items-start gap-3 text-left">
@@ -39,7 +45,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                     </div>
                 )}
 
-                <div className="flex flex-col gap-4">
+                <div className="rise-in flex flex-col gap-4" style={{ animationDelay: '280ms' }}>
                     <div className="flex gap-2">
                         <label className="relative cursor-pointer group flex-1">
                             <div className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 transition-colors flex items-center justify-center gap-2">
@@ -81,7 +87,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                 </div>
 
                 {/* Info Section - more prominent */}
-                <div className="mt-8 pt-6 border-t border-header-line">
+                <div className="rise-in mt-8 pt-6 border-t border-header-line" style={{ animationDelay: '350ms' }}>
                     <button
                         onClick={() => setShowInfo(!showInfo)}
                         className={`flex items-center justify-center gap-3 text-sm w-full py-2.5 px-4 rounded-lg transition-colors ${
@@ -185,7 +191,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
             </div>
 
             {/* Footer / Attribution */}
-            <div className="mt-8 flex flex-col items-center gap-3 text-sm text-slate-500">
+            <div className="rise-in mt-8 flex flex-col items-center gap-3 text-sm text-slate-500" style={{ animationDelay: '420ms' }}>
                 <div className="flex items-center gap-1">
                     <span>created by</span>
                     <a href="https://jacobkrch.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-medium text-slate-400 hover:text-emerald-400 transition-colors">

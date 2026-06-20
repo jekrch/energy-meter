@@ -117,3 +117,53 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Staggered entrance — elements rise + fade in on mount.
+   Pair with an inline `animation-delay` to cascade siblings.
+   Starts hidden (opacity:0) so delayed items don't flash before animating. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  opacity: 0;
+  animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Energy pulse — a crisp emerald ring expands outward from the upload icon,
+   like an electric halo. Each ring fires once (the two staggered rings read as
+   two pulses), then stops (`both` holds the faded-out final frame). */
+@keyframes energy-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70%, 100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.energy-ping {
+  animation: energy-ping 2s cubic-bezier(0, 0, 0.2, 1) 1 both;
+}
+
+/* Respect reduced-motion: no expanding pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .rise-in {
+    opacity: 1;
+    animation: none;
+  }
+
+  .energy-ping {
+    animation: none;
+    opacity: 0;
+  }
+}
