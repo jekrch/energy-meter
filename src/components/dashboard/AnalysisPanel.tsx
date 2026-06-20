@@ -244,11 +244,15 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         return metricMode === 'energy' ? 'value' : metricMode === 'demand' ? 'demand' : 'cost';
     }, [analysisView, metricMode]);
 
+    // Bars get the same vertical fade as the main chart's area fill, via per-Cell
+    // gradient refs. The gradient stops are defined in <defs> below using the
+    // current chartColor/incompleteColor, so they track metricMode automatically.
     const getBarColor = useCallback((entry: any): string => {
-        if (analysisView === 'averages') return (entry.isIncomplete || entry.count === 0) ? incompleteColor : chartColor;
-        if (viewRange?.start && viewRange?.end && !isPeriodComplete(entry, viewRange.start, viewRange.end)) return incompleteColor;
-        return chartColor;
-    }, [analysisView, chartColor, viewRange]);
+        const incomplete = analysisView === 'averages'
+            ? (entry.isIncomplete || entry.count === 0)
+            : !!(viewRange?.start && viewRange?.end && !isPeriodComplete(entry, viewRange.start, viewRange.end));
+        return incomplete ? 'url(#analysisBarIncomplete)' : 'url(#analysisBarGradient)';
+    }, [analysisView, viewRange]);
 
     const toggleDay = useCallback((day: number) => {
         startTransition(() => {
@@ -350,7 +354,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
             <div className="h-64 sm:h-80 flex-shrink-0 p-4 relative" ref={chartContainerRef}>
                 {showProcessingOverlay && (
-                    <div className="absolute inset-0 bg-base/80 flex items-center justify-center z-10">
+                    <div className="absolute inset-0 bg-surface-2/80 flex items-center justify-center z-10">
                         <div className="flex items-center gap-3 bg-surface-2 px-4 py-3 rounded-lg border border-line-2">
                             <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
                             <span className="text-slate-300 text-sm">Processing...</span>
@@ -369,6 +373,16 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }} onClick={handleChartClick}>
+                            <defs>
+                                <linearGradient id="analysisBarGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={chartColor} stopOpacity={0.95} />
+                                    <stop offset="100%" stopColor={chartColor} stopOpacity={0.35} />
+                                </linearGradient>
+                                <linearGradient id="analysisBarIncomplete" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={incompleteColor} stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor={incompleteColor} stopOpacity={0.3} />
+                                </linearGradient>
+                            </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#475569" />
                             <XAxis dataKey={xAxisDataKey} stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />

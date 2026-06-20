@@ -11,6 +11,7 @@
   --color-header-line: #1b2538; /* header border */
   --color-surface: #121a2c;     /* primary panels */
   --color-surface-2: #182133;   /* raised cards (KPIs) */
+  --color-surface-3: #202c45;   /* lightest surface — small accents (icon wells) */
   --color-sunken: #121a2c;      /* inset fields / plot areas */
   --color-line: color-mix(in srgb, white 7%, transparent);   /* panel borders (hairline) */
   --color-line-2: color-mix(in srgb, white 10%, transparent); /* card borders (hairline) */
@@ -31,6 +32,15 @@
 
 body {
   @apply bg-base text-slate-100;
+}
+
+/* Tailwind v4's Preflight no longer sets cursor:pointer on buttons.
+   Restore the expected pointer for interactive controls; disabled
+   buttons keep the default cursor. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary {
+  cursor: pointer;
 }
 
 /* Global keyboard focus ring — accent (emerald) at low alpha.

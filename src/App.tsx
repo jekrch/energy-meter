@@ -274,7 +274,7 @@ export default function App() {
         <header className="bg-header border-b border-line sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl shrink-0"><Plug className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" /></div>
+              <div className="bg-emerald-500/10 p-2 rounded-xl shrink-0"><Plug className="w-6 h-6 sm:w-[22px] sm:[22px] text-emerald-400" /></div>
               <div className="min-w-0">
                 <h1 className="text-lg md:text-xl font-bold tracking-tight">
                   <span className="text-emerald-400">GB</span> Energy Meter

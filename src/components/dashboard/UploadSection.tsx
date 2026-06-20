@@ -18,7 +18,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
     return (
         <div className="max-w-xl mx-auto mt-0 pb-12">
             <div className="bg-surface rounded-2xl border border-line p-8 text-center transition-colors duration-300">
-                <div className="bg-surface-2 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-line-2">
+                <div className="bg-surface-3 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-line-2">
                     <Upload className="w-10 h-10 text-emerald-500" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2 text-slate-100">Upload Energy Data</h2>
@@ -39,7 +39,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
 
                 <div className="flex flex-col gap-4">
                     <label className="relative cursor-pointer group">
-                        <div className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
+                        <div className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 transition-colors flex items-center justify-center gap-2">
                             <FileText className="w-4 h-4" />
                             {loading ? 'Processing...' : 'Choose XML or CSV File'}
                         </div>
@@ -49,16 +49,16 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                     {/* Demo section with friendly nudge */}
                     <div className="relative mt-2">
                         <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-emerald-400/10 to-emerald-500/10 rounded-xl blur-xl opacity-50" />
-                        <div className="relative bg-surface-2 border border-line-2 rounded-xl p-4">
+                        <div className="relative bg-surface-3 border border-line-2 rounded-xl p-4">
                             <p className="text-sm text-slate-400 mb-3">
                                 No file? <span className="text-slate-300 font-medium">See it in action first</span>
                             </p>
                             <button
                                 onClick={onLoadSample}
                                 disabled={loading}
-                                className="w-full bg-sunken border border-line text-slate-300 font-medium py-2.5 px-6 rounded-lg hover:border-line-2 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
+                                className="w-full bg-black/20 border border-slate-600 text-slate-200 font-semibold text-base py-3 px-6 rounded-xl hover:border-slate-500 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-center gap-2.5"
                             >
-                                <Zap className="w-4 h-4" />
+                                <Zap className="w-5 h-5" />
                                 Try the Demo
                             </button>
                         </div>

@@ -151,8 +151,8 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center overflow-hidden">
-      {/* Solid base layer - fully opaque */}
-      <div className="absolute inset-0 bg-surface" />
+      {/* Solid base layer - fully opaque, matches the panel background */}
+      <div className="absolute inset-0 bg-surface-2" />
       
       {/* Subtle animated gradient for visual interest */}
       <div 
