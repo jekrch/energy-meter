@@ -33,12 +33,31 @@ export interface TimeRange {
     end: number | null;
 }
 
+export interface HourRange {
+    start: number;
+    end: number;
+}
+
 export interface AnalysisFilters {
     daysOfWeek: number[];
     months: number[];
-    hourStart: number;
-    hourEnd: number;
+    // One or more hour windows; the filter keeps points matching ANY window.
+    // start <= end is a normal range; start > end wraps across midnight.
+    hourRanges: HourRange[];
 }
+
+// start <= end is a normal range; start > end wraps across midnight
+export const isHourInRange = (h: number, start: number, end: number): boolean =>
+    start <= end ? h >= start && h <= end : h >= start || h <= end;
+
+// The hour filter only restricts the data when there is at least one window and
+// none of them already covers the whole day (a full-day window is a no-op).
+export const isHourFilterActive = (ranges: HourRange[]): boolean =>
+    ranges.length > 0 && !ranges.some(r => r.start === 0 && r.end === 23);
+
+// True when the given hour passes the set of windows (empty set = no filter).
+export const hourPassesRanges = (h: number, ranges: HourRange[]): boolean =>
+    ranges.length === 0 || ranges.some(r => isHourInRange(h, r.start, r.end));
 
 export type MetricMode = 'energy' | 'cost' | 'demand';
 

@@ -1,4 +1,4 @@
-import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type MetricMode } from '../types';
+import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type MetricMode, isHourFilterActive } from '../types';
 
 export interface ChartDescription {
     main: string;
@@ -67,9 +67,13 @@ export function buildChartDescription(
         }
     }
 
-    // Hour range filter
-    if (filters.hourStart > 0 || filters.hourEnd < 23) {
-        filterParts.push(`${formatHourDisplay(filters.hourStart)}–${formatHourDisplay(filters.hourEnd)}`);
+    // Hour range filter - one entry per window (e.g. "6 AM–9 AM, 6 PM–9 PM")
+    if (isHourFilterActive(filters.hourRanges)) {
+        filterParts.push(
+            filters.hourRanges
+                .map(r => `${formatHourDisplay(r.start)}–${formatHourDisplay(r.end)}`)
+                .join(', ')
+        );
     }
 
     // Temperature filter

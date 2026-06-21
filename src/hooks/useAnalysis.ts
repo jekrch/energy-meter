@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS } from '../types';
+import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS, isHourFilterActive, hourPassesRanges } from '../types';
 import { useDebouncedValue } from './useDebounceValue';
 import { accumulateBucket, finalizeBuckets } from './analysisAggregation';
 import { runChunked, scheduleIdleWork } from './chunkedRunner';
@@ -104,8 +104,7 @@ export function useAnalysis(
     const [filters, setFilters] = useState<AnalysisFilters>({
         daysOfWeek: [],
         months: [],
-        hourStart: 0,
-        hourEnd: 23,
+        hourRanges: [{ start: 0, end: 23 }],
     });
 
     const [results, setResults] = useState<AnalysisResults>(EMPTY_RESULTS);
@@ -118,8 +117,7 @@ export function useAnalysis(
     // Debounce groupBy changes on mobile to prevent rapid switching crashes
     const debouncedGroupBy = useDebouncedValue(groupBy, DEVICE_CONFIG.isMobile ? 200 : 0);
     
-    const debouncedHourStart = useDebouncedValue(filters.hourStart, DEVICE_CONFIG.debounceMs);
-    const debouncedHourEnd = useDebouncedValue(filters.hourEnd, DEVICE_CONFIG.debounceMs);
+    const debouncedHourRanges = useDebouncedValue(filters.hourRanges, DEVICE_CONFIG.debounceMs);
 
     const filterSets = useMemo(() => ({
         daysOfWeek: new Set(filters.daysOfWeek),
@@ -173,7 +171,7 @@ export function useAnalysis(
         const { daysOfWeek, months } = filterSets;
         const hasDayFilter = daysOfWeek.size > 0;
         const hasMonthFilter = months.size > 0;
-        const hasHourFilter = debouncedHourStart > 0 || debouncedHourEnd < 23;
+        const hasHourFilter = isHourFilterActive(debouncedHourRanges);
         const hasAnyFilter = hasDayFilter || hasMonthFilter || hasHourFilter;
 
         const isStale = () => currentProcess !== processRef.current;
@@ -250,10 +248,7 @@ export function useAnalysis(
 
                 if (hasDayFilter && !daysOfWeek.has(date.getDay())) return;
                 if (hasMonthFilter && !months.has(date.getMonth())) return;
-                if (hasHourFilter) {
-                    const hour = date.getHours();
-                    if (hour < debouncedHourStart || hour > debouncedHourEnd) return;
-                }
+                if (hasHourFilter && !hourPassesRanges(date.getHours(), debouncedHourRanges)) return;
 
                 filtered.push(d);
             },
@@ -271,8 +266,7 @@ export function useAnalysis(
         activeTab,
         workingData,
         filterSets,
-        debouncedHourStart,
-        debouncedHourEnd,
+        debouncedHourRanges,
         debouncedGroupBy,
         labels,
         groupCount

@@ -86,6 +86,11 @@ export default function App() {
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
   const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
 
+  // Bumped on every dataset load so the dashboard's entrance animation replays
+  // even when one dataset replaces another (rawData stays truthy, so the subtree
+  // would otherwise never remount). Used as a `key` on the dashboard container.
+  const [loadKey, setLoadKey] = useState(0);
+
   // Weather hook
   const weather = useWeather(dataBounds.start, dataBounds.end);
 
@@ -99,6 +104,9 @@ export default function App() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setViewRange(bounds);
       setBrushData(createBrushData(rawData, BRUSH_POINTS));
+      // Replay the dashboard entrance animation on each new dataset.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoadKey(k => k + 1);
     }
   }, [rawData]);
 
@@ -275,8 +283,7 @@ export default function App() {
     setAnalysisFilters({
       daysOfWeek: preset.filters.daysOfWeek ?? [],
       months: preset.filters.months ?? [],
-      hourStart: preset.filters.hourStart ?? 0,
-      hourEnd: preset.filters.hourEnd ?? 23,
+      hourRanges: preset.filters.hourRanges ?? [{ start: 0, end: 23 }],
     });
     setGroupBy(preset.groupBy);
     setAnalysisView(preset.analysisView);
@@ -417,29 +424,32 @@ export default function App() {
             )
           ) : (
             stats && (
-              <div className="space-y-4">
+              <div key={loadKey} className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                  <StatCard accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
-                  <StatCard accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
+                  <StatCard className="rise-in" style={{ animationDelay: '0ms' }} accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
+                  <StatCard className="rise-in" style={{ animationDelay: '70ms' }} accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
                   {metricMode === 'demand' ? (
-                    <StatCard accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" subHighlight={stats.avgCost} sub="avg cost" />
+                    <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" subHighlight={stats.avgCost} sub="avg cost" />
                   ) : (
-                    <StatCard accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
+                    <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
                   )}
                   {metricMode === 'demand' ? (
-                    <StatCard accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} />
+                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} />
                   ) : (
-                    <StatCard accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} />
+                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} />
                   )}
                 </div>
 
-                <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
+                <div className="rise-in" style={{ animationDelay: '280ms' }}>
+                  <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
+                </div>
 
                 <InsightsModal onSelectInsight={handleSelectInsight}>
                   {(openModal) => (
                     <button
                       onClick={openModal}
-                      className="w-full group bg-linear-to-r from-surface-2 from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-3.5 sm:p-5 transition-colors duration-300"
+                      className="rise-in w-full group bg-linear-to-r from-surface-2 from-60% to-amber-950/40 hover:to-amber-900/50 border border-amber-900/40 hover:border-amber-500/40 rounded-2xl p-3.5 sm:p-5 transition-colors duration-300"
+                      style={{ animationDelay: '350ms' }}
                     >
                       <div className="flex items-center gap-2.5 sm:gap-4">
                         <div className="shrink-0 bg-linear-to-br from-amber-500 to-amber-400 w-10 h-10 sm:w-[42px] sm:h-[42px] rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40 transition-shadow">
@@ -459,7 +469,7 @@ export default function App() {
                   )}
                 </InsightsModal>
 
-                <div className="bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]">
+                <div className="rise-in bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]" style={{ animationDelay: '420ms' }}>
                   <div className="border-b border-header-line px-3 md:px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex bg-sunken p-1 rounded-lg border border-line">
@@ -548,7 +558,9 @@ export default function App() {
                 </div>
 
                 {/* Rate Changes Card */}
-                <RateChangesCard data={viewData} tolerancePercent={RATE_TOLERANCE_PERCENT} />
+                <div className="rise-in" style={{ animationDelay: '490ms' }}>
+                  <RateChangesCard data={viewData} tolerancePercent={RATE_TOLERANCE_PERCENT} />
+                </div>
               </div>
             )
           )}

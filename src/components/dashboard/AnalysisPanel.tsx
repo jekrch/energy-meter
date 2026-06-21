@@ -6,7 +6,7 @@ import { Calendar, CalendarDays, Loader2, Thermometer } from 'lucide-react';
 import { HourRangeFilter } from '../common/HourRangeFilter';
 import { FilterChip } from '../common/FilterChip';
 import { TempRangeSlider, celsiusToFahrenheit, fahrenheitToCelsius } from '../common/TempRangeSlider';
-import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint } from '../../types';
+import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint, type HourRange, isHourFilterActive } from '../../types';
 import { formatCostAxis } from '../../utils/formatters';
 import { buildChartDescription } from '../../utils/chartDescription';
 import type { MetricMode } from '../charts/MainChart';
@@ -288,8 +288,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         startTransition(() => { setFilters(prev => ({ ...prev, months: [] })); });
     }, [setFilters]);
 
-    const handleHourRangeChange = useCallback((start: number, end: number) => {
-        startTransition(() => { setFilters(prev => ({ ...prev, hourStart: start, hourEnd: end })); });
+    const handleHourRangeChange = useCallback((ranges: HourRange[]) => {
+        startTransition(() => { setFilters(prev => ({ ...prev, hourRanges: ranges })); });
     }, [setFilters]);
 
     const resetTempFilter = useCallback(() => {
@@ -310,8 +310,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     const isFilterProcessing = isProcessing || isTempDebouncing || isPending;
     const showProcessingOverlay = useDeferredLoading(isFilterProcessing, 150, 300);
     
-    const hasActiveFilters = filters.daysOfWeek.length > 0 || filters.months.length > 0 || 
-        filters.hourStart > 0 || filters.hourEnd < 23 || isTempFilterActive;
+    const hasActiveFilters = filters.daysOfWeek.length > 0 || filters.months.length > 0 ||
+        isHourFilterActive(filters.hourRanges) || isTempFilterActive;
 
     const incompletePeriods = useMemo(() => {
         if (analysisView !== 'timeline' || !viewRange?.start || !viewRange?.end) return 0;
@@ -509,7 +509,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     </div>
 
                     <div className="space-y-2 mb-6">
-                        <HourRangeFilter hourStart={filters.hourStart} hourEnd={filters.hourEnd} onChange={handleHourRangeChange} />
+                        <HourRangeFilter ranges={filters.hourRanges} onChange={handleHourRangeChange} />
                     </div>
                 </div>
             </div>

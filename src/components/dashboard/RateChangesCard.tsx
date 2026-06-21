@@ -1,8 +1,51 @@
 import React, { useMemo } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Clock, AlertTriangle, Calendar, BarChart2 } from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
 import { type DataPoint } from '../../types';
 import { detectRateChanges, formatRate, } from '../../utils/dataUtils';
 import { formatShortDate } from '../../utils/formatters';
+
+// Axis tick text is mono (JetBrains Mono) to match the main analysis chart.
+const AXIS_TICK = { fontFamily: "'JetBrains Mono', ui-monospace, monospace" };
+
+// Compact $/kWh formatter for the rate chart's Y axis.
+const formatRateAxis = (dollarsPerKwh: number): string => {
+  if (!isFinite(dollarsPerKwh)) return '';
+  if (dollarsPerKwh > 0 && dollarsPerKwh < 1) return `${(dollarsPerKwh * 100).toFixed(0)}¢`;
+  return `$${dollarsPerKwh.toFixed(2)}`;
+};
+
+// Custom X-axis tick that anchors the first/last labels inward so the edge
+// dates don't overflow the chart bounds (Recharts centers labels by default).
+const RateAxisTick = (props: any) => {
+  const { x, y, payload, index, visibleTicksCount } = props;
+  const anchor = index === 0 ? 'start' : index === visibleTicksCount - 1 ? 'end' : 'middle';
+  return (
+    <text x={x} y={y} dy={10} textAnchor={anchor} fill="#94a3b8" fontSize={10} style={AXIS_TICK}>
+      {formatShortDate(new Date(payload.value * 1000))}
+    </text>
+  );
+};
+
+interface RateChartTooltipProps {
+  active?: boolean;
+  payload?: any[];
+}
+
+const RateChartTooltip: React.FC<RateChartTooltipProps> = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="bg-surface-2 border border-line-2 rounded-lg px-3 py-2 shadow-lg">
+      <p className="text-xs text-slate-400 mb-0.5">{point.fullLabel}</p>
+      <p className="text-sm font-mono tabular-nums text-emerald-400 font-medium">
+        {formatRate(point.rate)}
+      </p>
+    </div>
+  );
+};
 
 // Check if a timestamp falls near a month boundary (within first 2 days)
 const isMonthBoundary = (timestamp: number): boolean => {
@@ -115,6 +158,42 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
     [data, tolerancePercent]
   );
 
+  // Rate-over-time series for the selected range. Plots cost/value per reading
+  // (the same ratio the card detects changes from), uniformly downsampled so
+  // long ranges stay responsive. Rate is stored both as the raw micro-$/Wh
+  // value (for the tooltip's formatRate) and as $/kWh (for the chart axis).
+  const rateChartData = useMemo(() => {
+    const points = data
+      .filter(p => p.value >= 50 && p.cost > 0)
+      .map(p => ({ timestamp: p.timestamp, rate: p.cost / p.value }));
+
+    if (points.length === 0) return [];
+
+    const MAX_POINTS = 400;
+    let sampled = points;
+    if (points.length > MAX_POINTS) {
+      const step = points.length / MAX_POINTS;
+      sampled = [];
+      for (let i = 0; i < MAX_POINTS; i++) {
+        sampled.push(points[Math.floor(i * step)]);
+      }
+      // Always keep the final reading so the line reaches the range end.
+      if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+        sampled.push(points[points.length - 1]);
+      }
+    }
+
+    return sampled.map(p => {
+      const date = new Date(p.timestamp * 1000);
+      return {
+        timestamp: p.timestamp,
+        rate: p.rate,
+        dollarsPerKwh: p.rate * 0.01,
+        fullLabel: `${formatShortDate(date)}, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      };
+    });
+  }, [data]);
+
   const yoyComparisons = useMemo(
     () => calculateYoYComparisons(data),
     [data]
@@ -175,6 +254,59 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Rate-over-time chart */}
+      {rateChartData.length > 1 && (
+        <div className="px-4 pt-4 pb-2 border-b border-header-line">
+          <div className="text-xs text-slate-400 mb-2">Rate over selected range</div>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={rateChartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="rateChartGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#475569" />
+                <XAxis
+                  dataKey="timestamp"
+                  type="number"
+                  scale="time"
+                  domain={['dataMin', 'dataMax']}
+                  stroke="#94a3b8"
+                  fontSize={10}
+                  tick={<RateAxisTick />}
+                  tickLine={true}
+                  axisLine={false}
+                  minTickGap={40}
+                />
+                <YAxis
+                  dataKey="dollarsPerKwh"
+                  stroke="#94a3b8"
+                  fontSize={10}
+                  tick={AXIS_TICK}
+                  tickLine={true}
+                  axisLine={false}
+                  width={50}
+                  domain={['auto', 'auto']}
+                  tickFormatter={formatRateAxis}
+                />
+                <Tooltip content={<RateChartTooltip />} />
+                <Area
+                  type="stepAfter"
+                  dataKey="dollarsPerKwh"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  fill="url(#rateChartGradient)"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="p-4">

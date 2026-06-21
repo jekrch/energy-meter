@@ -19,7 +19,7 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
 
     return (
         <div className="max-w-xl mx-auto mt-0 pb-12">
-            <div className="bg-surface rounded-2xl border border-line p-8 text-center transition-colors duration-300">
+            <div className="rise-in bg-surface rounded-2xl border border-line p-8 text-center transition-colors duration-300">
                 <div className="rise-in relative w-20 h-20 mx-auto mb-6">
                     {/* expanding electric halo — two staggered rings, start after the entrance settles */}
                     <span className="energy-ping absolute inset-0 rounded-full ring-1 ring-emerald-500/50" style={{ animationDelay: '600ms' }} />

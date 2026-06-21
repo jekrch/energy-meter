@@ -6,8 +6,7 @@ import type { AnalysisFilters } from '../types';
 const noFilters: AnalysisFilters = {
   daysOfWeek: [],
   months: [],
-  hourStart: 0,
-  hourEnd: 23,
+  hourRanges: [{ start: 0, end: 23 }],
 };
 
 describe('buildChartDescription main text', () => {
@@ -86,8 +85,7 @@ describe('buildChartDescription hour-range filter', () => {
   it('adds a 12-hour formatted range when narrowed', () => {
     const r = buildChartDescription('averages', 'hour', 'energy', {
       ...noFilters,
-      hourStart: 0,
-      hourEnd: 12,
+      hourRanges: [{ start: 0, end: 12 }],
     });
     expect(r.filters).toContain('12 AM–12 PM');
   });
@@ -95,8 +93,7 @@ describe('buildChartDescription hour-range filter', () => {
   it('formats afternoon hours with PM', () => {
     const r = buildChartDescription('averages', 'hour', 'energy', {
       ...noFilters,
-      hourStart: 9,
-      hourEnd: 17,
+      hourRanges: [{ start: 9, end: 17 }],
     });
     expect(r.filters).toContain('9 AM–5 PM');
   });
@@ -104,6 +101,22 @@ describe('buildChartDescription hour-range filter', () => {
   it('omits the range when it spans the whole day', () => {
     const r = buildChartDescription('averages', 'hour', 'energy', noFilters);
     expect(r.filters).toEqual([]);
+  });
+
+  it('lists each window when two ranges are selected', () => {
+    const r = buildChartDescription('averages', 'hour', 'energy', {
+      ...noFilters,
+      hourRanges: [{ start: 6, end: 9 }, { start: 18, end: 21 }],
+    });
+    expect(r.filters).toContain('6 AM–9 AM, 6 PM–9 PM');
+  });
+
+  it('formats a window that wraps past midnight', () => {
+    const r = buildChartDescription('averages', 'hour', 'energy', {
+      ...noFilters,
+      hourRanges: [{ start: 22, end: 5 }],
+    });
+    expect(r.filters).toContain('10 PM–5 AM');
   });
 });
 
@@ -152,8 +165,7 @@ describe('buildChartDescription combined filters', () => {
     const r = buildChartDescription('averages', 'hour', 'energy', {
       daysOfWeek: [1, 2, 3, 4, 5],
       months: [0, 1],
-      hourStart: 8,
-      hourEnd: 18,
+      hourRanges: [{ start: 8, end: 18 }],
     }, { isActive: true, min: 15, max: 25, unit: 'C' });
     expect(r.filters).toEqual(['weekdays only', 'Jan, Feb', '8 AM–6 PM', '15°C–25°C']);
   });

@@ -12,6 +12,10 @@ interface StatCardProps {
     loading?: boolean;
     /** Tailwind bg utility for the left accent bar, e.g. "bg-emerald-400" */
     accent?: string;
+    /** Extra classes for the root (e.g. an entrance animation). */
+    className?: string;
+    /** Inline style for the root (e.g. a staggered animation-delay). */
+    style?: React.CSSProperties;
 }
 
 /**
@@ -29,13 +33,13 @@ const accentStyles: Record<string, { bg: string; border: string; text: string }>
     'bg-slate-500': { bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
 };
 
-export const StatCard = React.memo(function StatCard({ icon, label, value, unit, sub, subHighlight, loading, accent = 'bg-emerald-400' }: StatCardProps) {
+export const StatCard = React.memo(function StatCard({ icon, label, value, unit, sub, subHighlight, loading, accent = 'bg-emerald-400', className = '', style: rootStyle }: StatCardProps) {
 
     const isLongValue = value.length > 12;
     const style = accentStyles[accent] ?? { bg: 'bg-sunken', border: 'border-line-2', text: 'text-slate-400' };
 
     return (
-        <div className="relative bg-surface-2 border border-line-2 hover:border-white/30 transition-colors duration-150 rounded-xl p-3 sm:p-3.5 overflow-hidden">
+        <div style={rootStyle} className={`relative bg-surface-2 border border-line-2 hover:border-white/30 transition-colors duration-150 rounded-xl p-3 sm:p-3.5 overflow-hidden ${className}`}>
 
             {/* Accent rail — kept as a soft hairline so color reads as punctuation, not decoration */}
             <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-r opacity-60 ${accent}`} />
