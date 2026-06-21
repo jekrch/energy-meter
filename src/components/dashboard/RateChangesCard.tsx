@@ -5,15 +5,17 @@ import {
 } from 'recharts';
 import { type DataPoint } from '../../types';
 import { detectRateChanges, formatRate, } from '../../utils/dataUtils';
-import { formatShortDate } from '../../utils/formatters';
+import { formatShortDate, formatChartTime } from '../../utils/formatters';
 
 // Axis tick text is mono (JetBrains Mono) to match the main analysis chart.
 const AXIS_TICK = { fontFamily: "'JetBrains Mono', ui-monospace, monospace" };
 
-// Compact $/kWh formatter for the rate chart's Y axis.
+// Compact $/kWh formatter for the rate chart's Y axis. One decimal of a cent so
+// narrow ranges (where the domain spans well under a cent) get distinct labels
+// instead of every tick rounding to the same whole-cent value.
 const formatRateAxis = (dollarsPerKwh: number): string => {
   if (!isFinite(dollarsPerKwh)) return '';
-  if (dollarsPerKwh > 0 && dollarsPerKwh < 1) return `${(dollarsPerKwh * 100).toFixed(0)}¢`;
+  if (dollarsPerKwh > 0 && dollarsPerKwh < 1) return `${(dollarsPerKwh * 100).toFixed(1)}¢`;
   return `$${dollarsPerKwh.toFixed(2)}`;
 };
 
@@ -158,41 +160,51 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
     [data, tolerancePercent]
   );
 
-  // Rate-over-time series for the selected range. Plots cost/value per reading
-  // (the same ratio the card detects changes from), uniformly downsampled so
-  // long ranges stay responsive. Rate is stored both as the raw micro-$/Wh
-  // value (for the tooltip's formatRate) and as $/kWh (for the chart axis).
+  // Rate-over-time series for the selected range. Plots the *detected* rate
+  // periods as a step function rather than the raw cost/value of every reading:
+  // the per-reading ratio jitters by a fraction of a cent (cost is rounded to
+  // whole micro-dollars), which a narrow auto-scaled Y domain amplifies into a
+  // jagged line. The periods are the same data the card lists as rate changes,
+  // so this is genuinely flat between changes. Rate is kept as raw micro-$/Wh
+  // (for the tooltip's formatRate) and as $/kWh (for the chart axis).
   const rateChartData = useMemo(() => {
-    const points = data
-      .filter(p => p.value >= 50 && p.cost > 0)
-      .map(p => ({ timestamp: p.timestamp, rate: p.cost / p.value }));
+    if (periods.length === 0) return [];
 
-    if (points.length === 0) return [];
-
-    const MAX_POINTS = 400;
-    let sampled = points;
-    if (points.length > MAX_POINTS) {
-      const step = points.length / MAX_POINTS;
-      sampled = [];
-      for (let i = 0; i < MAX_POINTS; i++) {
-        sampled.push(points[Math.floor(i * step)]);
-      }
-      // Always keep the final reading so the line reaches the range end.
-      if (sampled[sampled.length - 1] !== points[points.length - 1]) {
-        sampled.push(points[points.length - 1]);
-      }
-    }
-
-    return sampled.map(p => {
-      const date = new Date(p.timestamp * 1000);
+    const toPoint = (timestamp: number, rate: number) => {
+      const date = new Date(timestamp * 1000);
       return {
-        timestamp: p.timestamp,
-        rate: p.rate,
-        dollarsPerKwh: p.rate * 0.01,
-        fullLabel: `${formatShortDate(date)}, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        timestamp,
+        rate,
+        dollarsPerKwh: rate * 0.01,
+        fullLabel: `${formatShortDate(date)} ${formatChartTime(date)}`,
       };
-    });
-  }, [data]);
+    };
+
+    // One point at the start of each period; stepAfter holds the rate flat until
+    // the next period begins. Close the line at the final period's end so it
+    // spans the full selected range.
+    const pts = periods.map(p => toPoint(p.startTimestamp, p.rate));
+    const last = periods[periods.length - 1];
+    if (last.endTimestamp > last.startTimestamp) {
+      pts.push(toPoint(last.endTimestamp, last.rate));
+    }
+    return pts;
+  }, [periods]);
+
+  // Padded Y domain so a single flat period isn't a degenerate zero-height
+  // domain and the line sits comfortably in the middle of the plot.
+  const yDomain = useMemo<[number, number] | undefined>(() => {
+    if (rateChartData.length === 0) return undefined;
+    const vals = rateChartData.map(d => d.dollarsPerKwh);
+    let lo = Math.min(...vals);
+    let hi = Math.max(...vals);
+    if (hi - lo < 1e-9) {
+      const pad = Math.max(lo * 0.15, 0.01);
+      return [lo - pad, hi + pad];
+    }
+    const pad = (hi - lo) * 0.25;
+    return [lo - pad, hi + pad];
+  }, [rateChartData]);
 
   const yoyComparisons = useMemo(
     () => calculateYoYComparisons(data),
@@ -220,10 +232,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
 
   const formatTimestamp = (ts: number) => {
     const date = new Date(ts * 1000);
-    return `${formatShortDate(date)}, ${date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })}`;
+    return `${formatShortDate(date)} ${formatChartTime(date)}`;
   };
 
   return (
@@ -289,7 +298,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
                   tickLine={true}
                   axisLine={false}
                   width={50}
-                  domain={['auto', 'auto']}
+                  domain={yDomain ?? ['auto', 'auto']}
                   tickFormatter={formatRateAxis}
                 />
                 <Tooltip content={<RateChartTooltip />} />

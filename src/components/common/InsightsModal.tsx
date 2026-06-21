@@ -1,8 +1,13 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Modal, type ModalHandle } from './Modal';
-import { Lightbulb, X, ChevronRight, Clock, Calendar, TrendingUp, Moon, Sun, Snowflake, Flame } from 'lucide-react';
-import type { AnalysisFilters } from '../../types';
+import { Lightbulb, X, ChevronRight, Clock, Calendar, TrendingUp, Moon, Sun, Snowflake, Flame, ListOrdered } from 'lucide-react';
+import type { AnalysisFilters, DataPoint } from '../../types';
 import type { MetricMode } from '../charts/MainChart';
+import type { HourlyWeatherData } from '../../utils/weatherData';
+import type { EnergyUnit } from '../../utils/energyUnits';
+import type { RankingEntry } from '../../utils/rankings';
+import { TopRankings } from './TopRankings';
+import { usePersistentState } from '../../hooks/usePersistentState';
 
 export interface InsightPreset {
   id: string;
@@ -129,14 +134,29 @@ const CATEGORIES = [
 
 interface InsightsModalProps {
   onSelectInsight: (preset: InsightPreset) => void;
+  onViewRanking: (entry: RankingEntry) => void;
+  data: DataPoint[];
+  weather: HourlyWeatherData[];
+  hasTemperature: boolean;
+  energyUnit: EnergyUnit;
+  temperatureUnit: 'C' | 'F';
   children?: (openModal: () => void) => React.ReactNode;
 }
 
+type ModalTab = 'insights' | 'rankings';
+
 export const InsightsModal = React.memo(function InsightsModal({
   onSelectInsight,
+  onViewRanking,
+  data,
+  weather,
+  hasTemperature,
+  energyUnit,
+  temperatureUnit,
   children,
 }: InsightsModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [tab, setTab] = usePersistentState<ModalTab>('gb-insights-tab', 'insights');
   const modalRef = useRef<ModalHandle>(null);
 
   const closeModal = useCallback(() => setIsExpanded(false), []);
@@ -148,6 +168,13 @@ export const InsightsModal = React.memo(function InsightsModal({
       setIsExpanded(false);
     });
   }, [onSelectInsight]);
+
+  const handleViewRanking = useCallback((entry: RankingEntry) => {
+    modalRef.current?.close(() => {
+      onViewRanking(entry);
+      setIsExpanded(false);
+    });
+  }, [onViewRanking]);
 
   const modal = isExpanded ? (
     <Modal
@@ -176,9 +203,45 @@ export const InsightsModal = React.memo(function InsightsModal({
             </button>
           </div>
 
+          {/* Tabs */}
+          <div className="flex gap-1 px-3 pt-3 flex-shrink-0">
+            <button
+              onClick={() => setTab('insights')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                tab === 'insights'
+                  ? 'bg-surface-3 text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <Lightbulb className="w-3.5 h-3.5" />
+              Guided Insights
+            </button>
+            <button
+              onClick={() => setTab('rankings')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                tab === 'rankings'
+                  ? 'bg-surface-3 text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+              Top Rankings
+            </button>
+          </div>
+
           {/* Content */}
           <div className="overflow-y-auto flex-1 p-3 space-y-4">
-            {CATEGORIES.map((category) => (
+            {tab === 'rankings' ? (
+              <TopRankings
+                data={data}
+                weather={weather}
+                hasTemperature={hasTemperature}
+                energyUnit={energyUnit}
+                temperatureUnit={temperatureUnit}
+                onViewRanking={handleViewRanking}
+              />
+            ) : (
+            CATEGORIES.map((category) => (
               <div key={category.id}>
                 <div className="px-1 mb-2">
                   <h3 className="text-xs font-medium text-slate-300">{category.label}</h3>
@@ -207,7 +270,8 @@ export const InsightsModal = React.memo(function InsightsModal({
                   ))}
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
 
           {/* Footer */}

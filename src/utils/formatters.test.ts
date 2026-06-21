@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'bun:test';
 import {
   formatShortDate,
+  formatMonthYear,
+  formatChartTime,
   formatAxisValue,
   formatDateTimeLocal,
   parseDateTimeLocal,
@@ -17,6 +19,30 @@ describe('formatShortDate', () => {
     expect(out).toContain('15');
     expect(out).toContain('24');
     expect(out).not.toContain('2024');
+  });
+});
+
+describe('formatMonthYear', () => {
+  it('abbreviates the year to two digits with a leading apostrophe', () => {
+    expect(formatMonthYear('Feb', 2024)).toBe("Feb '24");
+    expect(formatMonthYear('Dec', 2009)).toBe("Dec '09");
+  });
+});
+
+describe('formatChartTime', () => {
+  it('uses a 12-hour clock with no minutes on the hour', () => {
+    expect(formatChartTime(new Date(2026, 2, 27, 23, 0))).toBe('11PM');
+    expect(formatChartTime(new Date(2026, 2, 27, 11, 0))).toBe('11AM');
+  });
+
+  it('renders midnight and noon as 12', () => {
+    expect(formatChartTime(new Date(2026, 2, 27, 0, 0))).toBe('12AM');
+    expect(formatChartTime(new Date(2026, 2, 27, 12, 0))).toBe('12PM');
+  });
+
+  it('shows zero-padded minutes when not on the hour', () => {
+    expect(formatChartTime(new Date(2026, 2, 27, 23, 15))).toBe('11:15PM');
+    expect(formatChartTime(new Date(2026, 2, 27, 0, 5))).toBe('12:05AM');
   });
 });
 

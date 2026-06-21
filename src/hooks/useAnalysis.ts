@@ -3,6 +3,7 @@ import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS, isHo
 import { useDebouncedValue } from './useDebounceValue';
 import { accumulateBucket, finalizeBuckets } from './analysisAggregation';
 import { runChunked, scheduleIdleWork } from './chunkedRunner';
+import { formatChartTime } from '../utils/formatters';
 
 export interface AnalysisAverageResult {
     key: number;
@@ -127,7 +128,7 @@ export function useAnalysis(
     const labels = useMemo(() => {
         if (debouncedGroupBy === 'dayOfWeek') return DAYS_OF_WEEK;
         if (debouncedGroupBy === 'month') return MONTHS;
-        return HOURS.map(h => `${h}:00`);
+        return HOURS.map(h => formatChartTime(new Date(2000, 0, 1, h)));
     }, [debouncedGroupBy]);
 
     const groupCount = debouncedGroupBy === 'month' ? 12 : debouncedGroupBy === 'dayOfWeek' ? 7 : 24;

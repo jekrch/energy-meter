@@ -1,5 +1,5 @@
 # GB Energy Meter :zap:
-[![Version](https://img.shields.io/badge/version-3-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
+[![Version](https://img.shields.io/badge/version-3.1-emerald.svg)](https://github.com/jekrch/energy-meter/releases)
 [![Test](https://github.com/jekrch/energy-meter/actions/workflows/test.yml/badge.svg)](https://github.com/jekrch/energy-meter/actions/workflows/test.yml)
 
 A web application for visualizing and analyzing energy consumption data from Green Button XML and CSV files. Built with React, TypeScript, and Vite.
@@ -26,11 +26,13 @@ A web application for visualizing and analyzing energy consumption data from Gre
 - **Peak Demand Metrics**: Toggle to instantaneous demand (kW) derived from each reading's interval to identify peak load periods
 - **Analysis Dashboard**: Analyze patterns by hour, day of week, or month with timeline and average views
 - **Guided Insights**: Explore common questions about your usage (peak hours, overnight baseline, seasonal trends) with one-click presets that automatically configure filters and views
+- **Top Rankings**: Rank your highest periods by cost, energy, peak demand, or hottest/coldest temperature across hours, days, weeks, or months, then jump straight to any period in the charts
 - **Data Table**: Browse raw readings with pagination
 
 ### Cost & Weather
 
 - **Cost Tracking**: Toggle between energy usage and cost metrics with automatic rate calculations
+- **Rate Changes**: Automatically detect rate changes from the cost/usage ratio over the selected range, with a rate-over-time chart, per-period rate breakdown, and hints for time-of-use or seasonal pricing
 - **Weather Overlay**: Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
 
 ### Display & Storage

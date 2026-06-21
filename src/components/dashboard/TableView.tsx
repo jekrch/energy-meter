@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { formatShortDate, formatCost } from '../../utils/formatters';
 import { type EnergyUnit, formatEnergyValue } from '../../utils/energyUnits';
 import type { DataPoint } from '../../types';
 
-type SortField = 'timestamp' | 'value' | 'cost' | 'duration';
-type SortDirection = 'asc' | 'desc';
+export type SortField = 'timestamp' | 'value' | 'cost' | 'duration';
+export type SortDirection = 'asc' | 'desc';
 
 interface TableViewProps {
     data: DataPoint[];
@@ -14,6 +14,10 @@ interface TableViewProps {
     rowsPerPage: number;
     isSelectionSubset: boolean;
     energyUnit: EnergyUnit;
+    sortField: SortField;
+    setSortField: React.Dispatch<React.SetStateAction<SortField>>;
+    sortDirection: SortDirection;
+    setSortDirection: React.Dispatch<React.SetStateAction<SortDirection>>;
 }
 
 function formatDuration(seconds: number): string {
@@ -59,11 +63,9 @@ function SortHeader({ label, field, currentSort, direction, onSort, align = 'lef
 }
 
 export const TableView = React.memo(function TableView({
-    data, page, setPage, rowsPerPage, isSelectionSubset, energyUnit
+    data, page, setPage, rowsPerPage, isSelectionSubset, energyUnit,
+    sortField, setSortField, sortDirection, setSortDirection
 }: TableViewProps) {
-    const [sortField, setSortField] = useState<SortField>('timestamp');
-    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-
     const handleSort = (field: SortField) => {
         if (sortField === field) {
             setSortDirection(d => d === 'asc' ? 'desc' : 'asc');

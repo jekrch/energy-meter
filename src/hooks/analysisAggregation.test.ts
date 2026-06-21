@@ -3,6 +3,7 @@ import { describe, it, expect } from 'bun:test';
 import { aggregateBuckets, finalizeBuckets } from './analysisAggregation';
 import { DAYS_OF_WEEK, MONTHS, HOURS } from '../types';
 import type { DataPoint } from '../types';
+import { formatChartTime } from '../utils/formatters';
 
 // 2024-01-01 00:00:00 UTC is a Monday. Tests construct timestamps from local
 // Date() to match the production code (which also uses local getDay/getHours),
@@ -23,7 +24,7 @@ const demandPoint = (timestamp: number, value: number, duration: number): DataPo
   duration,
 });
 
-const HOUR_LABELS = HOURS.map(h => `${h}:00`);
+const HOUR_LABELS = HOURS.map(h => formatChartTime(new Date(2000, 0, 1, h)));
 
 describe('aggregateBuckets', () => {
   it('merges readings that fall in the same hour bucket', () => {
@@ -133,6 +134,6 @@ describe('finalizeBuckets', () => {
     expect(timeline).toEqual([]);
     expect(averages.length).toBe(24);
     expect(averages.every(a => a.average === 0 && a.count === 0)).toBe(true);
-    expect(averages[5].label).toBe('5:00');
+    expect(averages[5].label).toBe('5AM');
   });
 });

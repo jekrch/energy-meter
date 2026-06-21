@@ -2,7 +2,7 @@ import type { DataPoint } from '../types';
 import { DAYS_OF_WEEK, MONTHS } from '../types';
 import { type EnergyUnit, convertEnergy } from './energyUnits';
 import { toDemandKW } from './demandUnits';
-import { formatShortDate } from './formatters';
+import { formatShortDate, formatMonthYear } from './formatters';
 import type { HourlyWeatherData } from '../utils/weatherData';
 import type { ExportGroupBy, RateUnitConfig } from '../components/export/exportConstants';
 
@@ -111,7 +111,7 @@ export function getBucketKey(
       return {
         key: `${y}-${m}`,
         timestamp: bucketTs,
-        label: `${MONTHS[m]} ${y}`,
+        label: formatMonthYear(MONTHS[m], y),
       };
     }
     default:

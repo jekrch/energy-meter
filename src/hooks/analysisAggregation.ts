@@ -1,5 +1,5 @@
 import { type DataPoint, DAYS_OF_WEEK, MONTHS } from '../types';
-import { formatShortDate } from '../utils/formatters';
+import { formatShortDate, formatChartTime, formatMonthYear } from '../utils/formatters';
 import { toDemandKW } from '../utils/demandUnits';
 import type {
   TimelineBucket,
@@ -38,7 +38,7 @@ export function accumulateBucket(
 
   if (groupBy === 'month') {
     tlKey = `${year}-${month}`;
-    tlLabel = `${MONTHS[month]} ${year}`;
+    tlLabel = formatMonthYear(MONTHS[month], year);
     sortTs = new Date(year, month, 1).getTime() / 1000;
     periodStart = sortTs;
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
@@ -51,7 +51,7 @@ export function accumulateBucket(
     periodEnd = periodStart + 86400 - 1;
   } else {
     tlKey = `${year}-${month}-${day}-${hour}`;
-    tlLabel = `${formatShortDate(date)} ${hour}:00`;
+    tlLabel = `${formatShortDate(date)} ${formatChartTime(new Date(year, month, day, hour))}`;
     sortTs = new Date(year, month, day, hour).getTime() / 1000;
     periodStart = sortTs;
     periodEnd = periodStart + 3600 - 1;

@@ -140,7 +140,7 @@ export const MainChart = React.memo(function MainChart({
                             axisLine={false}
                             minTickGap={40}
                             tickFormatter={(val) => (resolution === 'RAW' || resolution === 'HOURLY')
-                                ? (spansMultipleDays ? val : val.split(', ')[1] || val)
+                                ? (spansMultipleDays ? val : val.split(' ')[1] || val)
                                 : val}
                         />
                         <YAxis

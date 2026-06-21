@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import type { BrushDataPoint } from '../components/common/RangeBrush';
 import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
-import { formatShortDate } from './formatters';
+import { formatShortDate, formatChartTime } from './formatters';
 import { toDemandKW } from './demandUnits';
 import { tryParseNativeJson } from './nativeFormat';
 import { MAX_CHART_POINTS } from '../constants';
@@ -76,8 +76,8 @@ export const processDataAsync = (
             ...d,
             demand: toDemandKW(d.value, d.duration),
             date: formatShortDate(dateObj),
-            time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            fullDate: `${formatShortDate(dateObj)}, ${dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            time: formatChartTime(dateObj),
+            fullDate: `${formatShortDate(dateObj)} ${formatChartTime(dateObj)}`
           });
         }
         if (i < source.length) requestAnimationFrame(processChunk);
@@ -125,7 +125,7 @@ export const processDataAsync = (
         const result = capped.map(p => {
           const dateObj = new Date(p.timestamp * 1000);
           const dateStr = formatShortDate(dateObj);
-          const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const timeStr = formatChartTime(dateObj);
 
           return {
             timestamp: p.timestamp,
@@ -134,7 +134,7 @@ export const processDataAsync = (
             demand: p.demand,
             date: dateStr,
             time: resolution === 'HOURLY' ? timeStr : '',
-            fullDate: resolution === 'HOURLY' ? `${dateStr}, ${timeStr}` : dateStr
+            fullDate: resolution === 'HOURLY' ? `${dateStr} ${timeStr}` : dateStr
           };
         });
 

@@ -28,9 +28,10 @@ import { UploadSection } from './components/dashboard/UploadSection';
 import { DateRangeControls } from './components/dashboard/DateRangeControls';
 import { MainChart } from './components/charts/MainChart';
 import { AnalysisPanel } from './components/dashboard/AnalysisPanel';
-import { TableView } from './components/dashboard/TableView';
+import { TableView, type SortField, type SortDirection } from './components/dashboard/TableView';
 import { ChartToolbar } from './components/dashboard/ChartToolbar';
 import { InsightsModal, type InsightPreset } from './components/common/InsightsModal';
+import type { RankingEntry } from './utils/rankings';
 import { RateChangesCard } from './components/dashboard/RateChangesCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
@@ -80,10 +81,19 @@ export default function App() {
   // Time State
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
 
-  // Analysis State
-  const [groupBy, setGroupBy] = useState<'dayOfWeek' | 'month' | 'hour'>('hour');
-  const [analysisView, setAnalysisView] = useState<'averages' | 'timeline'>('averages');
-  const [autoZoom, setAutoZoom] = useState(false);
+  // Analysis State. Defaults match what a fresh dataset resets to (see the
+  // loadId effect below).
+  const [groupBy, setGroupBy] = useState<'dayOfWeek' | 'month' | 'hour'>('month');
+  const [analysisView, setAnalysisView] = useState<'averages' | 'timeline'>('timeline');
+  const [autoZoom, setAutoZoom] = useState(true);
+
+  // Table sort and temperature filter live in App — not in TableView /
+  // AnalysisPanel — so they survive a tab switch, which unmounts and remounts
+  // those components. (`page` is already lifted here for the same reason.)
+  const [sortField, setSortField] = useState<SortField>('timestamp');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [tempFilter, setTempFilter] = useState<{ min: number | null; max: number | null }>({ min: null, max: null });
+  const [userHasSetTempFilter, setUserHasSetTempFilter] = useState(false);
 
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
   const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
@@ -103,6 +113,29 @@ export default function App() {
       setBrushData(createBrushData(rawData, BRUSH_POINTS));
     }
   }, [rawData]);
+
+  // Return the analysis view to its defaults and clear transient per-tab settings
+  // (table sort, temperature filter) whenever a NEW dataset loads. Keyed on
+  // loadId — deliberately not run when the tab panels mount — so switching tabs
+  // preserves whatever the user had set. This replaces a mount effect that used
+  // to live in AnalysisPanel and wiped these on every return to the tab.
+  useEffect(() => {
+    setGroupBy('month');
+    setAnalysisView('timeline');
+    setAutoZoom(true);
+    setSortField('timestamp');
+    setSortDirection('asc');
+    setTempFilter({ min: null, max: null });
+    setUserHasSetTempFilter(false);
+  }, [loadId]);
+
+  // Temperature-filter values are expressed in the active unit, so clear them
+  // when the user flips °F/°C to avoid misfiltering on stale numbers. In App, not
+  // the panel, so a tab switch (which remounts the panel) doesn't wipe the filter.
+  useEffect(() => {
+    setTempFilter({ min: null, max: null });
+    setUserHasSetTempFilter(false);
+  }, [temperatureUnit]);
 
   const viewData = useMemo(() => {
     if (!rawData || !viewRange.start || !viewRange.end) return rawData || [];
@@ -208,6 +241,7 @@ export default function App() {
     const avgDemand = totalHours > 0 ? (totalValue / totalHours) / 1000 : 0;
 
     const peakDemandDateObj = new Date(peakDemandTs * 1000);
+    const peakDemandDayStart = Math.floor(new Date(peakDemandDateObj.getFullYear(), peakDemandDateObj.getMonth(), peakDemandDateObj.getDate()).getTime() / 1000);
 
     return {
       total: formatEnergyValue(totalValue, energyUnit), totalCost: formatCost(totalCost),
@@ -219,6 +253,7 @@ export default function App() {
       effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`, unit: energyUnit,
       peakDemand: formatDemandValue(peakDemand), avgDemand: formatDemandValue(avgDemand),
       peakDemandDate: `${formatShortDate(peakDemandDateObj)}, ${peakDemandDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      peakDemandDayStart,
     };
   }, [viewData, energyUnit]);
 
@@ -299,6 +334,20 @@ export default function App() {
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [stats, dataBounds, setGroupBy, setAnalysisView]);
 
+  // Open the analysis timeline grouped by hour, scoped to the 24h window of the
+  // day when peak demand occurred.
+  const handleViewPeakDemand = useCallback(() => {
+    if (!stats || dataBounds.start === null || dataBounds.end === null) return;
+    const dayStart = Math.max(dataBounds.start, stats.peakDemandDayStart);
+    const dayEnd = Math.min(dataBounds.end, stats.peakDemandDayStart + 86400 - 1);
+    setActiveTab('analysis');
+    setGroupBy('hour');
+    setAnalysisView('timeline');
+    setViewRange({ start: dayStart, end: dayEnd });
+    setPage(1);
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [stats, dataBounds, setGroupBy, setAnalysisView]);
+
   const handleSelectInsight = useCallback((preset: InsightPreset) => {
     setActiveTab('analysis');
     setAnalysisFilters({
@@ -312,6 +361,45 @@ export default function App() {
       setMetricMode(preset.metricMode);
     }
   }, [setAnalysisFilters]);
+
+  // Open the analysis timeline scoped to the period of a Top Ranking entry.
+  // Hours/days expand to the full 24h day; weeks to 7 days; months to the whole
+  // month — grouped so each bar represents the natural sub-period.
+  const handleViewRanking = useCallback((entry: RankingEntry) => {
+    if (dataBounds.start === null || dataBounds.end === null) return;
+    const d = new Date(entry.periodStart * 1000);
+    let rangeStart: number;
+    let rangeEnd: number;
+
+    if (entry.granularity === 'hour' || entry.granularity === 'day') {
+      rangeStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000;
+      rangeEnd = rangeStart + 86400 - 1;
+      setGroupBy('hour');
+    } else if (entry.granularity === 'week') {
+      rangeStart = entry.periodStart;
+      rangeEnd = rangeStart + 7 * 86400 - 1;
+      setGroupBy('dayOfWeek');
+    } else {
+      rangeStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime() / 1000;
+      rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).getTime() / 1000;
+      setGroupBy('dayOfWeek');
+    }
+
+    // Match the chart's primary metric to the ranking the user picked (temp
+    // rankings have no metric of their own, so leave the current mode alone).
+    if (entry.metric === 'cost' || entry.metric === 'energy' || entry.metric === 'demand') {
+      setMetricMode(entry.metric);
+    }
+
+    setActiveTab('analysis');
+    setAnalysisView('timeline');
+    setViewRange({
+      start: Math.max(dataBounds.start, rangeStart),
+      end: Math.min(dataBounds.end, rangeEnd),
+    });
+    setPage(1);
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [dataBounds, setGroupBy, setAnalysisView]);
 
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
 
@@ -400,7 +488,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v3
+                    v3.1
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
@@ -415,7 +503,7 @@ export default function App() {
                     className="flex items-center gap-1.5 text-sm font-semibold bg-surface-3 hover:bg-white/5 text-slate-400 hover:text-slate-200 border border-line-2 hover:border-slate-500 px-3 py-2 rounded-lg transition-colors"
                   >
                     <History className="w-4 h-4" />
-                    <span className="text-xs font-medium">{historyEntries.length}</span>
+                    <span className="text-sm font-medium">{historyEntries.length}</span>
                   </button>
                 )}
                 <button onClick={reset} className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
@@ -455,7 +543,7 @@ export default function App() {
                     <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
                   )}
                   {metricMode === 'demand' ? (
-                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} />
+                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} actionLabel="View" onAction={handleViewPeakDemand} />
                   ) : (
                     <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} actionLabel="View" onAction={handleViewPeakDay} />
                   )}
@@ -465,7 +553,15 @@ export default function App() {
                   <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} onPan={handlePan} />
                 </div>
 
-                <InsightsModal onSelectInsight={handleSelectInsight}>
+                <InsightsModal
+                  onSelectInsight={handleSelectInsight}
+                  onViewRanking={handleViewRanking}
+                  data={rawData ?? []}
+                  weather={weather.hourlyData}
+                  hasTemperature={weather.enabled && weather.hourlyData.length > 0}
+                  energyUnit={energyUnit}
+                  temperatureUnit={temperatureUnit}
+                >
                   {(openModal) => (
                     <button
                       onClick={openModal}
@@ -559,9 +655,11 @@ export default function App() {
                           isDataSampled={isDataSampled}
                           sampledCount={sampledCount}
                           originalCount={originalCount}
-                          autoZoom={autoZoom}
-                          setAutoZoom={setAutoZoom}
                           analysisDomain={analysisDomain}
+                          tempFilter={tempFilter}
+                          setTempFilter={setTempFilter}
+                          userHasSetTempFilter={userHasSetTempFilter}
+                          setUserHasSetTempFilter={setUserHasSetTempFilter}
                           metricMode={metricMode}
                           viewRange={viewRange}
                           energyUnit={energyUnit}
@@ -573,7 +671,7 @@ export default function App() {
                     )}
 
                     {activeTab === 'table' && (
-                      <TableView data={viewData} page={page} setPage={setPage} rowsPerPage={ROWS_PER_PAGE} isSelectionSubset={isZoomed} energyUnit={energyUnit} />
+                      <TableView data={viewData} page={page} setPage={setPage} rowsPerPage={ROWS_PER_PAGE} isSelectionSubset={isZoomed} energyUnit={energyUnit} sortField={sortField} setSortField={setSortField} sortDirection={sortDirection} setSortDirection={setSortDirection} />
                     )}
                   </div>
                 </div>

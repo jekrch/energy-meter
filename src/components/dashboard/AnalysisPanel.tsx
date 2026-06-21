@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useRef, useTransition } from 'react';
+import React, { useCallback, useMemo, useRef, useTransition } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -33,8 +33,10 @@ interface AnalysisPanelProps {
     isDataSampled?: boolean;
     sampledCount?: number;
     originalCount?: number;
-    autoZoom: boolean;
-    setAutoZoom: React.Dispatch<React.SetStateAction<boolean>>;
+    tempFilter: { min: number | null; max: number | null };
+    setTempFilter: React.Dispatch<React.SetStateAction<{ min: number | null; max: number | null }>>;
+    userHasSetTempFilter: boolean;
+    setUserHasSetTempFilter: React.Dispatch<React.SetStateAction<boolean>>;
     analysisDomain: [number, number];
     metricMode: MetricMode;
     setMetricMode?: (mode: MetricMode) => void;
@@ -61,27 +63,17 @@ const DEVICE_CONFIG = getDeviceConfig();
 export const AnalysisPanel = React.memo(function AnalysisPanel({
     filters, setFilters, groupBy, setGroupBy, analysisView, setAnalysisView,
     results, isProcessing, isDataSampled = false, originalCount,
-    setAutoZoom, analysisDomain, metricMode,
-    viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F'
+    analysisDomain, metricMode,
+    viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F',
+    tempFilter, setTempFilter, userHasSetTempFilter, setUserHasSetTempFilter
 }: AnalysisPanelProps) {
 
-    const [tempFilter, setTempFilter] = useState<{ min: number | null; max: number | null }>({
-        min: null, max: null
-    });
-    const [userHasSetTempFilter, setUserHasSetTempFilter] = useState(false);
-    
     const MAX_ANALYSIS_POINTS = 500;
     const [isPending, startTransition] = useTransition();
 
     const debouncedTempMin = useDebouncedValue(tempFilter.min, DEVICE_CONFIG.debounceMs);
     const debouncedTempMax = useDebouncedValue(tempFilter.max, DEVICE_CONFIG.debounceMs);
     const isTempDebouncing = tempFilter.min !== debouncedTempMin || tempFilter.max !== debouncedTempMax;
-
-    React.useEffect(() => {
-        setGroupBy('month');
-        setAnalysisView('timeline');
-        setAutoZoom(true);
-    }, [setGroupBy, setAnalysisView, setAutoZoom]);
 
     const isTouchDevice = useTouchDevice();
     const { activeIndex, tooltipRef, chartContainerRef, handleChartClick } = useTooltipControl(isTouchDevice);
@@ -121,13 +113,6 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         }
         return { min: Math.floor(minC), max: Math.ceil(maxC) };
     }, [results.timeline, weatherData, showWeather, temperatureUnit]);
-
-    React.useEffect(() => {
-        if (tempBoundsDisplay) {
-            setTempFilter({ min: null, max: null });
-            setUserHasSetTempFilter(false);
-        }
-    }, [temperatureUnit]);
 
     // When filters change, results.timeline briefly empties while the chart
     // reprocesses, which would drop tempBoundsDisplay to null and unmount the
