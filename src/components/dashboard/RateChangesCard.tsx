@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Clock, AlertTriangle, Calendar, BarChart2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Clock, AlertTriangle, Calendar } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -141,11 +141,6 @@ export const calculateYoYComparisons = (data: DataPoint[]): YearOverYearComparis
   return comparisons.sort((a, b) => b.year2 - a.year2 || (a.season === 'summer' ? -1 : 1));
 };
 
-
-const getSeasonLabelShort = (season: 'summer' | 'winter'): string => {
-  return season === 'summer' ? 'Summer' : 'Winter';
-};
-
 interface RateChangesCardProps {
   data: DataPoint[];
   tolerancePercent?: number;
@@ -205,11 +200,6 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
     const pad = (hi - lo) * 0.25;
     return [lo - pad, hi + pad];
   }, [rateChartData]);
-
-  const yoyComparisons = useMemo(
-    () => calculateYoYComparisons(data),
-    [data]
-  );
 
   // Calculate average rate for the period
   const avgRate = useMemo(() => {
