@@ -395,7 +395,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
             </div>
 
             {/* Year-over-Year Comparisons */}
-            {yoyComparisons.length > 0 && (
+            {/* {yoyComparisons.length > 0 && (
               <div className="mt-4 pt-4 border-t border-header-line">
                 <div className="flex items-center gap-2 mb-3">
                   <BarChart2 className="w-4 h-4 text-violet-400" />
@@ -445,7 +445,7 @@ export const RateChangesCard: React.FC<RateChangesCardProps> = ({
                   Compares average rates for the same season across years to reveal underlying rate changes.
                 </p>
               </div>
-            )}
+            )} */}
 
             {/* TOU Hint */}
             {changes.length >= 2 && !changes.some(c => isMonthBoundary(c.timestamp)) && (

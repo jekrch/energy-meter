@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 
 interface StatCardProps {
     icon: React.ReactElement;
@@ -16,6 +16,10 @@ interface StatCardProps {
     className?: string;
     /** Inline style for the root (e.g. a staggered animation-delay). */
     style?: React.CSSProperties;
+    /** Optional link text rendered at the bottom of the card; requires onAction. */
+    actionLabel?: string;
+    /** Click handler for the action link. */
+    onAction?: () => void;
 }
 
 /**
@@ -33,7 +37,7 @@ const accentStyles: Record<string, { bg: string; border: string; text: string }>
     'bg-slate-500': { bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
 };
 
-export const StatCard = React.memo(function StatCard({ icon, label, value, unit, sub, subHighlight, loading, accent = 'bg-emerald-400', className = '', style: rootStyle }: StatCardProps) {
+export const StatCard = React.memo(function StatCard({ icon, label, value, unit, sub, subHighlight, loading, accent = 'bg-emerald-400', className = '', style: rootStyle, actionLabel, onAction }: StatCardProps) {
 
     const isLongValue = value.length > 12;
     const style = accentStyles[accent] ?? { bg: 'bg-sunken', border: 'border-line-2', text: 'text-slate-400' };
@@ -43,6 +47,17 @@ export const StatCard = React.memo(function StatCard({ icon, label, value, unit,
 
             {/* Accent rail — kept as a soft hairline so color reads as punctuation, not decoration */}
             <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-r opacity-60 ${accent}`} />
+
+            {actionLabel && onAction && (
+                <button
+                    type="button"
+                    onClick={onAction}
+                    className={`group/action absolute top-2.5 right-2.5 sm:top-3 sm:right-3 inline-flex items-center gap-0.5 text-[10px] sm:text-[11px] font-semibold ${style.text} opacity-70 hover:opacity-100 hover:underline focus:outline-none focus-visible:underline transition-all`}
+                >
+                    {actionLabel}
+                    <ChevronRight className="w-3 h-3 transition-transform group-hover/action:translate-x-0.5" />
+                </button>
+            )}
 
             <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                 <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${style.bg} border ${style.border} flex items-center justify-center shrink-0`}>

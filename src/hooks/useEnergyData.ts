@@ -26,6 +26,13 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingBlocks, setPendingBlocks] = useState<ParsedBlock[] | null>(null);
   const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
+  // Bumped in the same commit as every dataset load so App can use it as the
+  // dashboard's `key` to replay the entrance animation. Incrementing it here
+  // (rather than in an App effect that runs after the first paint) means the
+  // dashboard mounts exactly once with its final key — otherwise it would mount
+  // under the stale key, paint, then remount under the new key, restarting the
+  // animation mid-flight.
+  const [loadId, setLoadId] = useState(0);
 
   useEffect(() => {
     if (rawData && rawData.length > 0) {
@@ -36,6 +43,7 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
   const applyBlock = (block: ParsedBlock, name: string) => {
     const res = block.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW';
     setRawData(block.data);
+    setLoadId(n => n + 1);
     setResolution(res);
     onDataLoaded?.(name, block.data, res, block.meta);
   };
@@ -72,7 +80,7 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
 
   const loadSampleData = () => {
     setLoading(true); setFileName("demo.xml"); setError(null); onLoadStart?.();
-    setTimeout(() => { setRawData(generateSampleData()); setResolution('DAILY'); setLoading(false); }, SAMPLE_LOAD_DELAY);
+    setTimeout(() => { setRawData(generateSampleData()); setLoadId(n => n + 1); setResolution('DAILY'); setLoading(false); }, SAMPLE_LOAD_DELAY);
   };
 
   const reset = () => {
@@ -83,6 +91,7 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
     onLoadStart?.();
     setFileName(name);
     setRawData(data);
+    setLoadId(n => n + 1);
     setResolution(savedResolution);
     setError(null);
     setPendingBlocks(null);
@@ -95,6 +104,7 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded }: UseE
     fileName,
     pendingBlocks,
     dataBounds,
+    loadId,
     handleFileUpload,
     handleSelectBlock,
     handleCancelBlockPicker,

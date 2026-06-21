@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, DollarSign, ChevronRight, LightbulbIcon, Gauge, Upload, History } from 'lucide-react';
 import { ExportModal } from './components/export/ExportModal';
 
@@ -42,6 +42,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [metricMode, setMetricMode] = useState<MetricMode>('cost');
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
@@ -57,6 +58,7 @@ export default function App() {
     fileName,
     pendingBlocks,
     dataBounds,
+    loadId,
     handleFileUpload,
     handleSelectBlock,
     handleCancelBlockPicker,
@@ -86,11 +88,6 @@ export default function App() {
   const [brushData, setBrushData] = useState<BrushDataPoint[]>([]);
   const [energyUnit, setEnergyUnit] = useState<EnergyUnit>('Wh');
 
-  // Bumped on every dataset load so the dashboard's entrance animation replays
-  // even when one dataset replaces another (rawData stays truthy, so the subtree
-  // would otherwise never remount). Used as a `key` on the dashboard container.
-  const [loadKey, setLoadKey] = useState(0);
-
   // Weather hook
   const weather = useWeather(dataBounds.start, dataBounds.end);
 
@@ -104,9 +101,6 @@ export default function App() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setViewRange(bounds);
       setBrushData(createBrushData(rawData, BRUSH_POINTS));
-      // Replay the dashboard entrance animation on each new dataset.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoadKey(k => k + 1);
     }
   }, [rawData]);
 
@@ -219,7 +213,8 @@ export default function App() {
       total: formatEnergyValue(totalValue, energyUnit), totalCost: formatCost(totalCost),
       average: formatEnergyValue(avgDailyValue, energyUnit), avgCost: formatCost(avgDailyCost),
       peak: formatEnergyValue(peakDay.value, energyUnit), peakCost: formatCost(peakDay.cost),
-      peakDate: formatShortDate(peakDay.date), readings: viewData.length, numDays,
+      peakDate: formatShortDate(peakDay.date), peakDayStart: Math.floor(peakDay.date.getTime() / 1000),
+      readings: viewData.length, numDays,
       range: `${formatShortDate(new Date(viewData[0].timestamp * 1000))} – ${formatShortDate(new Date(viewData[viewData.length - 1].timestamp * 1000))}`,
       effectiveRate: `$${effectiveRate.toFixed(3)}/kWh`, unit: energyUnit,
       peakDemand: formatDemandValue(peakDemand), avgDemand: formatDemandValue(avgDemand),
@@ -276,7 +271,33 @@ export default function App() {
   };
 
   const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
+
+  // Shift the view window forward (+1) or backward (-1) by its current duration,
+  // clamped so the window stays within the available data bounds.
+  const handlePan = (direction: 1 | -1) => {
+    if (viewRange.start === null || viewRange.end === null || dataBounds.start === null || dataBounds.end === null) return;
+    const duration = viewRange.end - viewRange.start;
+    let newStart = viewRange.start + direction * duration;
+    let newEnd = viewRange.end + direction * duration;
+    if (newEnd > dataBounds.end) { newEnd = dataBounds.end; newStart = newEnd - duration; }
+    if (newStart < dataBounds.start) { newStart = dataBounds.start; newEnd = Math.min(dataBounds.end, newStart + duration); }
+    setViewRange({ start: newStart, end: newEnd });
+    setPage(1);
+  };
   const handleChartSelection = (range: { start: number; end: number }) => { setViewRange({ start: range.start, end: range.end }); setPage(1); };
+
+  // Open the analysis timeline grouped by hour, scoped to the peak day's 24h window.
+  const handleViewPeakDay = useCallback(() => {
+    if (!stats || dataBounds.start === null || dataBounds.end === null) return;
+    const dayStart = Math.max(dataBounds.start, stats.peakDayStart);
+    const dayEnd = Math.min(dataBounds.end, stats.peakDayStart + 86400 - 1);
+    setActiveTab('analysis');
+    setGroupBy('hour');
+    setAnalysisView('timeline');
+    setViewRange({ start: dayStart, end: dayEnd });
+    setPage(1);
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [stats, dataBounds, setGroupBy, setAnalysisView]);
 
   const handleSelectInsight = useCallback((preset: InsightPreset) => {
     setActiveTab('analysis');
@@ -424,7 +445,7 @@ export default function App() {
             )
           ) : (
             stats && (
-              <div key={loadKey} className="space-y-4">
+              <div key={loadId} className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   <StatCard className="rise-in" style={{ animationDelay: '0ms' }} accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
                   <StatCard className="rise-in" style={{ animationDelay: '70ms' }} accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
@@ -436,12 +457,12 @@ export default function App() {
                   {metricMode === 'demand' ? (
                     <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} />
                   ) : (
-                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} />
+                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} actionLabel="View" onAction={handleViewPeakDay} />
                   )}
                 </div>
 
                 <div className="rise-in" style={{ animationDelay: '280ms' }}>
-                  <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} />
+                  <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} onPan={handlePan} />
                 </div>
 
                 <InsightsModal onSelectInsight={handleSelectInsight}>
@@ -469,7 +490,7 @@ export default function App() {
                   )}
                 </InsightsModal>
 
-                <div className="rise-in bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]" style={{ animationDelay: '420ms' }}>
+                <div ref={panelRef} className="rise-in bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]" style={{ animationDelay: '420ms' }}>
                   <div className="border-b border-header-line px-3 md:px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex bg-sunken p-1 rounded-lg border border-line">
