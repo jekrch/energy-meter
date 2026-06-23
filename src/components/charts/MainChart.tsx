@@ -9,6 +9,8 @@ import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
 import { formatDemandAxis } from '../../utils/demandUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
+import { DownloadChartButton } from '../common/DownloadChartButton';
+import { RESOLUTIONS } from '../../types';
 
 // Canonical definition lives in types/index.ts; re-exported here so existing
 // imports (InsightsModal, AnalysisPanel) keep working unchanged.
@@ -103,12 +105,25 @@ export const MainChart = React.memo(function MainChart({
         return `${Math.round(val)}°`;
     };
 
+    const metricLabel = metricMode === 'energy' ? 'Energy' : metricMode === 'demand' ? 'Peak demand' : 'Cost';
+    const exportTitle = `${metricLabel} over time`;
+    const exportSubtitle = RESOLUTIONS[resolution]?.label;
+
     return (
         <div className="absolute inset-0 flex flex-col min-h-[300px]">
             <div
                 className="flex-1 p-4 relative"
                 ref={chartContainerRef}
             >
+                {!isProcessing && data.length > 0 && (
+                    <div className="absolute top-2 right-2 z-20">
+                        <DownloadChartButton
+                            containerRef={chartContainerRef}
+                            title={exportTitle}
+                            subtitle={exportSubtitle}
+                        />
+                    </div>
+                )}
                 {isProcessing && (
                     <div className="absolute inset-0 bg-base/50 flex items-center justify-center z-10 pointer-events-none">
                         <div className="flex items-center gap-3 bg-surface-2 px-4 py-3 rounded-lg border border-line-2">

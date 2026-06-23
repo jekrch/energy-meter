@@ -16,6 +16,7 @@ import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl
 import { useDebouncedValue } from '../../hooks/useDebounceValue';
 import { useDeferredLoading } from '../../hooks/useDeferredLoading';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
+import { DownloadChartButton } from '../common/DownloadChartButton';
 import { downsampleLTTB } from '../../utils/dataUtils';
 
 // §8: axis tick text is mono (JetBrains Mono), supplied via Recharts SVG tick props.
@@ -334,6 +335,12 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             <div className="text-xs text-slate-400 mt-0.5">Filtered to {chartDescription.filters.join(' · ')}</div>
                         )}
                     </div>
+                    <DownloadChartButton
+                        containerRef={chartContainerRef}
+                        title={chartDescription.main}
+                        subtitle={chartDescription.filters.length > 0 ? `Filtered to ${chartDescription.filters.join(' · ')}` : undefined}
+                        className="flex-shrink-0 -mt-1 -mr-1"
+                    />
                 </div>
             </div>
 
