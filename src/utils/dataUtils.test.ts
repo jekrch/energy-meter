@@ -1,6 +1,7 @@
 /// <reference types="bun-types" />
+// Must come first: registers browser APIs (DOMParser, etc.) before ./dataUtils loads.
+import '../test/happyDom';
 import { describe, it, expect, beforeAll } from 'bun:test';
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { readFileSync } from 'node:fs';
 import {
   downsampleLTTB,
@@ -17,9 +18,6 @@ import type { DataPoint } from '../types';
 // Load a fixture file from the repo-root /fixtures dir relative to this test.
 const loadFixture = (name: string): string =>
   readFileSync(new URL(`../../fixtures/${name}`, import.meta.url), 'utf-8');
-
-// Register browser APIs (DOMParser, etc.)
-GlobalRegistrator.register();
 
 // Mock requestAnimationFrame for Node/Bun environment
 beforeAll(() => {

@@ -2,14 +2,9 @@
 // Minimal renderHook utility for bun:test + happy-dom, so hooks can be exercised
 // without pulling in @testing-library/react. Mirrors the small surface we use:
 // result.current, rerender(props), unmount().
+import './happyDom';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
-
-// Register a DOM once per test process. Safe to call from every hook test file.
-if (typeof document === 'undefined') {
-  GlobalRegistrator.register();
-}
 // React 19 requires this flag for act() to flush effects synchronously.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
