@@ -890,9 +890,14 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
         <Modal
             ref={modalRef}
             onClose={onClose}
+            // The overlay's padding is what reserves the gap above and below, so
+            // the panel is capped against the overlay box rather than `vh`:
+            // mobile browsers report `vh` against the *large* viewport, which
+            // pushed the footer under the toolbar / home indicator.
+            overlayClassName="pt-4 sm:pt-[8vh] pb-[max(1rem,env(safe-area-inset-bottom))] bg-black/30 backdrop-blur-[2px]"
             // Fixed width in both states: picking a template swaps the body's
             // contents, and the panel must not resize out from under the click.
-            panelClassName="max-w-2xl lg:max-w-5xl max-h-[88vh]"
+            panelClassName="max-w-2xl lg:max-w-5xl max-h-full"
             ariaLabel="Peak rate periods"
         >
             {/* Header */}
@@ -1018,63 +1023,67 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                 )}
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-sunken border-t border-header-line shrink-0">
-                <button
-                    type="button"
-                    onClick={() => { setImportOpen(o => !o); setImportError(null); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        importOpen
-                            ? 'bg-emerald-500/15 text-emerald-300'
-                            : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300'
-                    }`}
-                >
-                    <Upload className="w-3.5 h-3.5" />
-                    Import
-                </button>
-                {schedule && (
+            {/* Footer — the two groups wrap onto separate lines when they cannot
+                share one, rather than overflowing off the right on a phone. */}
+            <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-sunken border-t border-header-line shrink-0">
+                <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={handleCopy}
-                        title="Copy this schedule as JSON to share it"
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
-                    >
-                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copied ? 'Copied' : 'Copy JSON'}
-                    </button>
-                )}
-                {schedule && onSaveDataFile && (
-                    <button
-                        type="button"
-                        onClick={handleSave}
-                        title="Download this dataset as a .json file with the schedule saved inside it"
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
-                    >
-                        {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
-                        <span className="hidden sm:inline">{saved ? 'Saved' : 'Save data file'}</span>
-                    </button>
-                )}
-                <div className="flex-1" />
-                {schedule && (
-                    <button
-                        type="button"
-                        onClick={handleClear}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                            confirmClear
-                                ? 'bg-red-500/15 text-red-400'
-                                : 'text-slate-500 hover:text-red-400'
+                        onClick={() => { setImportOpen(o => !o); setImportError(null); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                            importOpen
+                                ? 'bg-emerald-500/15 text-emerald-300'
+                                : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300'
                         }`}
                     >
-                        {confirmClear ? 'Clear — are you sure?' : 'Clear schedule'}
+                        <Upload className="w-3.5 h-3.5 shrink-0" />
+                        Import
                     </button>
-                )}
-                <button
-                    type="button"
-                    onClick={() => modalRef.current?.close()}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
-                >
-                    Done
-                </button>
+                    {schedule && (
+                        <button
+                            type="button"
+                            onClick={handleCopy}
+                            title="Copy this schedule as JSON to share it"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
+                        >
+                            {copied ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
+                            {copied ? 'Copied' : 'Copy JSON'}
+                        </button>
+                    )}
+                    {schedule && onSaveDataFile && (
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            title="Download this dataset as a .json file with the schedule saved inside it"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
+                        >
+                            {saved ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" /> : <Download className="w-3.5 h-3.5 shrink-0" />}
+                            <span className="hidden sm:inline">{saved ? 'Saved' : 'Save data file'}</span>
+                        </button>
+                    )}
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                    {schedule && (
+                        <button
+                            type="button"
+                            onClick={handleClear}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                                confirmClear
+                                    ? 'bg-red-500/15 text-red-400'
+                                    : 'text-slate-500 hover:text-red-400'
+                            }`}
+                        >
+                            {confirmClear ? 'Clear — are you sure?' : 'Clear schedule'}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => modalRef.current?.close()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
+                    >
+                        Done
+                    </button>
+                </div>
             </div>
         </Modal>
     );
