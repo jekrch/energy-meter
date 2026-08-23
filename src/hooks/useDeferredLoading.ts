@@ -11,57 +11,46 @@ export function useDeferredLoading(
     minDurationMs: number = 300
 ): boolean {
     const [showLoading, setShowLoading] = useState(false);
+    // Set exactly while the indicator is up, so the effect can tell whether the
+    // minimum-duration hold applies without depending on `showLoading` itself -
+    // depending on it would re-run this effect and re-arm the delay timeout.
     const loadingStartTime = useRef<number | null>(null);
     const delayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const minDurationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        // Clear any pending delay timeout
-        if (delayTimeoutRef.current) {
-            clearTimeout(delayTimeoutRef.current);
-            delayTimeoutRef.current = null;
-        }
-
         if (isLoading) {
-            // Start loading - wait before showing indicator
+            // Wait before showing the indicator, so fast operations never flash it
             delayTimeoutRef.current = setTimeout(() => {
                 loadingStartTime.current = Date.now();
                 setShowLoading(true);
             }, delayMs);
-        } else {
-            // Loading finished
-            if (showLoading && loadingStartTime.current !== null) {
-                // Ensure minimum display time
-                const elapsed = Date.now() - loadingStartTime.current;
-                const remaining = minDurationMs - elapsed;
 
-                if (remaining > 0) {
-                    // Keep showing for remaining minimum time
-                    minDurationTimeoutRef.current = setTimeout(() => {
-                        setShowLoading(false);
-                        loadingStartTime.current = null;
-                    }, remaining);
-                } else {
-                    // Minimum time already elapsed, hide immediately
-                    setShowLoading(false);
-                    loadingStartTime.current = null;
+            return () => {
+                if (delayTimeoutRef.current) {
+                    clearTimeout(delayTimeoutRef.current);
+                    delayTimeoutRef.current = null;
                 }
-            } else {
-                // Was never shown (fast operation), ensure it stays hidden
-                setShowLoading(false);
-                loadingStartTime.current = null;
-            }
+            };
         }
 
+        // Loading finished. If the indicator never appeared, there is nothing to hide.
+        if (loadingStartTime.current === null) return;
+
+        // Otherwise hold it for whatever is left of its minimum display time
+        const remaining = Math.max(0, minDurationMs - (Date.now() - loadingStartTime.current));
+        minDurationTimeoutRef.current = setTimeout(() => {
+            loadingStartTime.current = null;
+            setShowLoading(false);
+        }, remaining);
+
         return () => {
-            if (delayTimeoutRef.current) {
-                clearTimeout(delayTimeoutRef.current);
-            }
             if (minDurationTimeoutRef.current) {
                 clearTimeout(minDurationTimeoutRef.current);
+                minDurationTimeoutRef.current = null;
             }
         };
-    }, [isLoading, delayMs, minDurationMs, showLoading]);
+    }, [isLoading, delayMs, minDurationMs]);
 
     return showLoading;
 }

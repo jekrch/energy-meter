@@ -752,7 +752,9 @@ function TemplatePicker({ onPick, onBlank }: {
     );
 
     return (
-        <div className="flex flex-col gap-3">
+        // Held to a readable column: the panel is sized for the two-pane editor
+        // this picker leads into, which is far wider than these cards need.
+        <div className="flex flex-col gap-3 w-full max-w-lg mx-auto">
             <p className="text-xs text-slate-500 leading-relaxed">
                 Green Button files carry no rate-period metadata, so the schedule is yours to
                 describe. It shades the chart as a visual reference — it does not recompute
@@ -888,7 +890,9 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
         <Modal
             ref={modalRef}
             onClose={onClose}
-            panelClassName={`${hasPeriods ? 'max-w-2xl lg:max-w-5xl' : 'max-w-lg'} max-h-[88vh]`}
+            // Fixed width in both states: picking a template swaps the body's
+            // contents, and the panel must not resize out from under the click.
+            panelClassName="max-w-2xl lg:max-w-5xl max-h-[88vh]"
             ariaLabel="Peak rate periods"
         >
             {/* Header */}
