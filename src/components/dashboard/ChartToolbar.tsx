@@ -1,8 +1,11 @@
-import { DollarSign, Zap, Gauge } from 'lucide-react';
-import { type MetricMode, RESOLUTIONS } from '../../types';
+import { useState } from 'react';
+import { CalendarClock, DollarSign, Gauge, Settings2, Zap } from 'lucide-react';
+import { type MetricMode, type PeakSchedule, RESOLUTIONS } from '../../types';
 import { type EnergyUnit, ENERGY_UNITS } from '../../utils/energyUnits';
 import { PillGroup, PillButton } from '../common/PillButton';
 import { WeatherSettings } from '../common/WeatherSettings';
+import { PeakRatesModal } from '../common/PeakRatesModal';
+import { describeSchedule } from '../../utils/peakScheduleFormat';
 import type { useWeather } from '../../hooks/useWeather';
 
 interface ChartToolbarProps {
@@ -16,6 +19,12 @@ interface ChartToolbarProps {
   temperatureUnit: 'C' | 'F';
   setTemperatureUnit: (unit: 'C' | 'F') => void;
   weather: ReturnType<typeof useWeather>;
+  peakSchedule: PeakSchedule | null;
+  setPeakSchedule: (schedule: PeakSchedule | null) => void;
+  showPeakBands: boolean;
+  setShowPeakBands: (show: boolean) => void;
+  // Passed straight through to the peak editor's "Save data file" action.
+  onSaveDataFile?: () => void;
 }
 
 // The metric / energy-unit / resolution / weather control row that sits above
@@ -32,7 +41,15 @@ export function ChartToolbar({
   temperatureUnit,
   setTemperatureUnit,
   weather,
+  peakSchedule,
+  setPeakSchedule,
+  showPeakBands,
+  setShowPeakBands,
+  onSaveDataFile,
 }: ChartToolbarProps) {
+  const [editorOpen, setEditorOpen] = useState(false);
+  const hasSchedule = (peakSchedule?.periods.length ?? 0) > 0;
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <PillGroup className="bg-sunken rounded-lg">
@@ -108,6 +125,42 @@ export function ChartToolbar({
       <div className="flex-1 min-w-0" />
 
       <div className="flex items-center gap-1.5">
+        {/* Peak rates: the pill toggles the bands, the gear opens the editor.
+            With no schedule yet there is nothing to toggle, so the whole pill
+            opens the editor instead. */}
+        <PillGroup className="bg-sunken rounded-lg">
+          <PillButton
+            active={hasSchedule && showPeakBands}
+            onClick={() => (hasSchedule ? setShowPeakBands(!showPeakBands) : setEditorOpen(true))}
+            activeClassName="bg-red-500/15 text-red-400"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md"
+          >
+            <CalendarClock className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">
+              {hasSchedule ? describeSchedule(peakSchedule!) : 'Peak rates'}
+            </span>
+          </PillButton>
+          {hasSchedule && (
+            <PillButton
+              active={false}
+              onClick={() => setEditorOpen(true)}
+              activeClassName=""
+              className="px-2 py-1.5 rounded-md"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+            </PillButton>
+          )}
+        </PillGroup>
+
+        {editorOpen && (
+          <PeakRatesModal
+            schedule={peakSchedule}
+            onChange={setPeakSchedule}
+            onClose={() => setEditorOpen(false)}
+            onSaveDataFile={onSaveDataFile}
+          />
+        )}
+
         <WeatherSettings
           enabled={weather.enabled}
           zipCode={weather.zipCode}

@@ -3,7 +3,8 @@ import { Modal, type ModalHandle } from '../common/Modal';
 import { Download, X, FileJson, FileSpreadsheet, Check, RefreshCw } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { PillGroup, PillButton } from '../common/PillButton';
-import type { DataPoint } from '../../types';
+import { OFF_PEAK, type DataPoint, type PeakSchedule } from '../../types';
+import { buildPeakIndex, classify } from '../../utils/peakSchedule';
 import { type EnergyUnit } from '../../utils/energyUnits';
 import { toDemandKW } from '../../utils/demandUnits';
 import { formatShortDate } from '../../utils/formatters';
@@ -26,7 +27,7 @@ import {
   rowToCsv,
   type AggBucket,
 } from '../../utils/exportUtils';
-import { downloadNativeFile, sanitizeFilename } from '../../utils/nativeFormat';
+import { downloadDatasetFile } from '../../utils/nativeFormat';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ interface ExportModalProps {
   fileName?: string;
   /** Current resolution — preserved in the native re-loadable export */
   resolution?: string;
+  /** Peak rate schedule — travels with the native re-loadable export */
+  peakSchedule?: PeakSchedule | null;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -53,6 +56,7 @@ export const ExportModal = React.memo(function ExportModal({
   temperatureUnit = 'F',
   fileName,
   resolution = 'RAW',
+  peakSchedule = null,
 }: ExportModalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [format, setFormat] = useState<ExportFormat>('csv');
@@ -84,9 +88,10 @@ export const ExportModal = React.memo(function ExportModal({
   // NOTE: rateUnit is intentionally excluded so that changing the rate unit
   // doesn't reset the enabled state of all columns. The rate column label is
   // patched in deriveEffectiveColumns instead.
+  const peakScheduleAvailable = !!peakSchedule?.periods.length;
   useEffect(() => {
-    setColumns(buildDefaultColumns(energyUnit, weatherAvailable, temperatureUnit));
-  }, [energyUnit, weatherAvailable, temperatureUnit]);
+    setColumns(buildDefaultColumns(energyUnit, weatherAvailable, temperatureUnit, peakScheduleAvailable));
+  }, [energyUnit, weatherAvailable, temperatureUnit, peakScheduleAvailable]);
 
   const effectiveColumns = useMemo(
     () => deriveEffectiveColumns(columns, groupBy, rateUnit, temperatureUnit),
@@ -155,6 +160,17 @@ export const ExportModal = React.memo(function ExportModal({
     return temperatureUnit === 'F' ? celsius * 9 / 5 + 32 : celsius;
   }, [temperatureUnit]);
 
+  // Names the rate period a reading falls in, for the optional peak_period
+  // column. Null when there is no schedule, which also keeps the column out.
+  const peakLookup = useMemo(() => {
+    if (!peakSchedule?.periods.length) return null;
+    const index = buildPeakIndex(peakSchedule);
+    return (ts: number) => {
+      const periodIdx = classify(ts, index);
+      return periodIdx === OFF_PEAK ? null : peakSchedule.periods[periodIdx].name;
+    };
+  }, [peakSchedule]);
+
   // ── Export handler ──────────────────────────────────────────────────────
 
   const handleExport = useCallback(async () => {
@@ -167,21 +183,7 @@ export const ExportModal = React.memo(function ExportModal({
       setIsExporting(true);
       setExportProgress(0);
       try {
-        const name = fileName?.replace(/\.[^.]+$/, '') || 'energy-data';
-        downloadNativeFile(
-          data,
-          {
-            fileName: name,
-            resolution,
-            sources: [{
-              fileName: name,
-              startDate: data[0].timestamp,
-              endDate: data[data.length - 1].timestamp,
-              recordCount: data.length,
-            }],
-          },
-          `energy-${sanitizeFilename(name)}.json`,
-        );
+        downloadDatasetFile(data, { fileName, resolution, peakSchedule });
         setExportProgress(100);
         await new Promise(r => setTimeout(r, 350));
       } catch (err) {
@@ -214,7 +216,7 @@ export const ExportModal = React.memo(function ExportModal({
       let headerKeys: string[] | null = null;
 
       if (groupBy === 'none') {
-        const sampleRow = buildRawRow(data[0], enabledKeys, energyUnit, temperatureUnit, weatherLookup, celsiusToUnit, timeFmt, rateUnitConfig);
+        const sampleRow = buildRawRow(data[0], enabledKeys, energyUnit, temperatureUnit, weatherLookup, celsiusToUnit, timeFmt, rateUnitConfig, peakLookup);
         headerKeys = Object.keys(sampleRow);
 
         if (format === 'csv' && includeHeaders) parts.push(headerKeys.join(',') + '\n');
@@ -229,7 +231,7 @@ export const ExportModal = React.memo(function ExportModal({
           const lines: string[] = [];
 
           for (let i = offset; i < end; i++) {
-            const row = buildRawRow(data[i], enabledKeys, energyUnit, temperatureUnit, weatherLookup, celsiusToUnit, timeFmt, rateUnitConfig);
+            const row = buildRawRow(data[i], enabledKeys, energyUnit, temperatureUnit, weatherLookup, celsiusToUnit, timeFmt, rateUnitConfig, peakLookup);
             if (format === 'csv') {
               lines.push(rowToCsv(row, headerKeys!));
             } else {
@@ -354,7 +356,7 @@ export const ExportModal = React.memo(function ExportModal({
       setIsExporting(false);
       setExportProgress(0);
     }
-  }, [enabledColumns, isExporting, data, format, groupBy, energyUnit, temperatureUnit, hourlyWeatherData, includeHeaders, celsiusToUnit, closeDropdown, rateUnitConfig, fileName, resolution]);
+  }, [enabledColumns, isExporting, data, format, groupBy, energyUnit, temperatureUnit, hourlyWeatherData, includeHeaders, celsiusToUnit, closeDropdown, rateUnitConfig, fileName, resolution, peakSchedule, peakLookup]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 

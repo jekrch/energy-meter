@@ -24,3 +24,9 @@ export const BLOCK_DAILY_THRESHOLD = 2000;
 
 // Percent change in $/kWh that counts as a rate change in the Rate Changes card.
 export const RATE_TOLERANCE_PERCENT = 8;
+
+// Peak-rate bands are only honest while the rendered series still resolves each
+// hour. Once LTTB downsampling stretches the gap between plotted points past
+// this, a band's edges land on whichever point survived sampling rather than on
+// the real period boundary — so the bands are hidden instead of drawn wrong.
+export const PEAK_BAND_MAX_STEP_SECONDS = 3600;

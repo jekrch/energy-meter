@@ -1,16 +1,18 @@
 import React, { useCallback, useMemo, useRef, useTransition } from 'react';
 import {
-    ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
+    ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea,
+    ResponsiveContainer, Cell
 } from 'recharts';
 import { Calendar, CalendarDays, Loader2, Thermometer } from 'lucide-react';
 import { HourRangeFilter } from '../common/HourRangeFilter';
 import { FilterChip } from '../common/FilterChip';
 import { TempRangeSlider, celsiusToFahrenheit, fahrenheitToCelsius } from '../common/TempRangeSlider';
-import { DAYS_OF_WEEK, MONTHS, type AnalysisFilters, type DataPoint, type HourRange, isHourFilterActive } from '../../types';
-import { formatCostAxis } from '../../utils/formatters';
+import { DAYS_OF_WEEK, MONTHS, OFF_PEAK, PEAK_COLORS, type AnalysisFilters, type DataPoint, type HourRange, type PeakSchedule, isHourFilterActive } from '../../types';
+import { nominalHourPeriods, peakStackSegments, scheduleIsEmpty } from '../../utils/peakSchedule';
+import { formatCost, formatCostAxis } from '../../utils/formatters';
 import { buildChartDescription } from '../../utils/chartDescription';
 import type { MetricMode } from '../charts/MainChart';
-import { type EnergyUnit, formatEnergyAxis } from '../../utils/energyUnits';
+import { type EnergyUnit, formatEnergyAxis, formatEnergyValue } from '../../utils/energyUnits';
 import { formatDemandAxis } from '../../utils/demandUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { useDebouncedValue } from '../../hooks/useDebounceValue';
@@ -46,7 +48,26 @@ interface AnalysisPanelProps {
     weatherData?: Map<number, number>;
     showWeather?: boolean;
     temperatureUnit?: 'C' | 'F';
+    peakSchedule?: PeakSchedule | null;
+    showPeakBands?: boolean;
 }
+
+// A row of the analysis chart. The averages and timeline shapes differ, but the
+// bits the bars and bands read are common to both.
+interface ChartEntry {
+    key?: number;
+    label?: string;
+    count?: number;
+    isIncomplete?: boolean;
+    periodStart?: number;
+    periodEnd?: number;
+    periodValues?: number[];
+    periodCosts?: number[];
+    periodAverages?: number[];
+    periodAvgCosts?: number[];
+}
+
+type PeriodArrayKey = 'periodValues' | 'periodCosts' | 'periodAverages' | 'periodAvgCosts';
 
 function isPeriodComplete(periodData: any, viewStart: number, viewEnd: number): boolean {
     if (periodData.periodStart === undefined || periodData.periodEnd === undefined) return true;
@@ -66,7 +87,8 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     results, isProcessing, isDataSampled = false, originalCount,
     analysisDomain, metricMode,
     viewRange, energyUnit, weatherData, showWeather = false, temperatureUnit = 'F',
-    tempFilter, setTempFilter, userHasSetTempFilter, setUserHasSetTempFilter
+    tempFilter, setTempFilter, userHasSetTempFilter, setUserHasSetTempFilter,
+    peakSchedule = null, showPeakBands = false
 }: AnalysisPanelProps) {
 
     const MAX_ANALYSIS_POINTS = 500;
@@ -81,6 +103,11 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const chartColor = metricMode === 'energy' ? '#f59e0b' : metricMode === 'demand' ? '#8b5cf6' : '#10b981';
     const incompleteColor = '#64748b';
+
+    // Stacking a bar by rate period only works for additive metrics. Peak demand
+    // is a max over the bucket, so its segments would not sum to the bar height —
+    // that view keeps the single total bar.
+    const hasPeakSchedule = !!showPeakBands && !!peakSchedule && !scheduleIsEmpty(peakSchedule);
 
     const yAxisFormatter = useCallback((val: number) => {
         if (metricMode === 'energy') return formatEnergyAxis(val, energyUnit);
@@ -141,6 +168,17 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         );
     }, [analysisView, groupBy, metricMode, filters, isTempFilterActive, debouncedTempMin, debouncedTempMax, temperatureUnit]);
 
+    // The timeline has one row per calendar bucket, so grouping a multi-year
+    // dataset by hour yields tens of thousands of them — 17.5k for the two-year
+    // demo file. Every row becomes a <Bar> plus a per-row <Cell> (one *set* per
+    // rate period once the bars are stacked), which is enough SVG to hang or
+    // kill the tab. Bars narrower than a pixel carry no information anyway, so
+    // cap what reaches Recharts. `filteredTimeline` stays complete: the counts
+    // and stats derived from it must still see every period.
+    const capTimeline = useCallback(<T extends DataPoint>(rows: T[]): T[] => (
+        rows.length > MAX_ANALYSIS_POINTS ? downsampleLTTB(rows, MAX_ANALYSIS_POINTS) as T[] : rows
+    ), []);
+
     const { chartData, filteredTimeline } = useMemo(() => {
         const timeline = results.timeline;
         
@@ -148,7 +186,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
             if (analysisView === 'averages') {
                 return { chartData: results.averages, filteredTimeline: timeline };
             }
-            return { chartData: timeline, filteredTimeline: timeline };
+            return { chartData: capTimeline(timeline), filteredTimeline: timeline };
         }
 
         const timelineWithWeather = timeline.map(item => ({
@@ -182,8 +220,19 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 : categoryItems.filter(item => isPeriodComplete(item, viewRange.start!, viewRange.end!));
 
             if (completeItems.length === 0) {
-                return { ...avg, average: 0, avgCost: 0, demand: 0, count: 0, isIncomplete: true, temperature: undefined };
+                return {
+                    ...avg, average: 0, avgCost: 0, demand: 0, count: 0, isIncomplete: true,
+                    temperature: undefined,
+                    periodAverages: avg.periodAverages?.map(() => 0),
+                    periodAvgCosts: avg.periodAvgCosts?.map(() => 0),
+                };
             }
+
+            // The per-period arrays are re-averaged over the same complete items
+            // as the total, so the stacked segments keep summing to the bar.
+            const slots = avg.periodAverages?.length ?? 0;
+            const periodSum = slots ? new Array<number>(slots).fill(0) : null;
+            const periodCostSum = slots ? new Array<number>(slots).fill(0) : null;
 
             let sum = 0, costSum = 0, demandSum = 0, tempSum = 0, tempCount = 0;
             for (const item of completeItems) {
@@ -191,22 +240,51 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                 costSum += item.cost;
                 demandSum += item.demand ?? 0;
                 if (item.temperature !== undefined) { tempSum += item.temperature; tempCount++; }
+                if (periodSum && periodCostSum) {
+                    for (let i = 0; i < slots; i++) {
+                        periodSum[i] += item.periodValues?.[i] ?? 0;
+                        periodCostSum[i] += item.periodCosts?.[i] ?? 0;
+                    }
+                }
             }
 
             return {
                 ...avg, average: Math.round(sum / completeItems.length), avgCost: Math.round(costSum / completeItems.length),
                 demand: demandSum / completeItems.length,
-                count: completeItems.length, isIncomplete: false, temperature: tempCount > 0 ? tempSum / tempCount : undefined
+                count: completeItems.length, isIncomplete: false, temperature: tempCount > 0 ? tempSum / tempCount : undefined,
+                periodAverages: periodSum?.map(v => Math.round(v / completeItems.length)),
+                periodAvgCosts: periodCostSum?.map(v => Math.round(v / completeItems.length)),
             };
         });
 
         const timelineForChart = analysisView === 'averages' 
             ? averages
-            : filtered.length > MAX_ANALYSIS_POINTS ? downsampleLTTB(filtered, MAX_ANALYSIS_POINTS) : filtered;
+            : capTimeline(filtered);
 
         return { chartData: timelineForChart, filteredTimeline: filtered };
     }, [results.timeline, results.averages, analysisView, showWeather, weatherData,
-        isTempFilterActive, debouncedTempMin, debouncedTempMax, temperatureUnit, viewRange]);
+        isTempFilterActive, debouncedTempMin, debouncedTempMax, temperatureUnit, viewRange, capTimeline]);
+
+    // The per-period array holding this view's metric, split the same way the
+    // single-bar `dataKey` above splits the total.
+    const stackArrayKey: PeriodArrayKey = analysisView === 'averages'
+        ? (metricMode === 'energy' ? 'periodAverages' : 'periodAvgCosts')
+        : (metricMode === 'energy' ? 'periodValues' : 'periodCosts');
+
+    // How many period slots the rows in hand actually carry. Zero means the
+    // aggregation has not caught up with the schedule yet (or ran without one).
+    const rowSlots = useMemo(() => {
+        const split = (chartData[0] as ChartEntry | undefined)?.[stackArrayKey];
+        return Array.isArray(split) ? split.length : 0;
+    }, [chartData, stackArrayKey]);
+
+    // Peak demand is a maximum over the bucket rather than a total, so its
+    // segments would not sum to the bar — that view keeps the single bar.
+    const peakStack = useMemo(() => (
+        hasPeakSchedule && metricMode !== 'demand'
+            ? peakStackSegments(peakSchedule, chartColor, rowSlots)
+            : null
+    ), [hasPeakSchedule, peakSchedule, metricMode, chartColor, rowSlots]);
 
     const getTooltipData = useCallback((d: any): TooltipData | null => {
         const energyVal = analysisView === 'averages' ? d.average : d.value;
@@ -217,28 +295,74 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
         const isPartial = !!(analysisView === 'timeline' && hasViewRange && !isPeriodComplete(d, viewRange.start!, viewRange.end!));
         const hasNoCompleteData = analysisView === 'averages' && (d.isIncomplete || d.count === 0);
 
+        // Mirrors the stacked segments, so hovering a day bar answers "how much of
+        // this was peak?" — zero-valued periods are dropped to keep it short.
+        const peakBreakdown = peakStack
+            ?.map(({ slot, name, color }) => ({ name, color, amount: d[stackArrayKey]?.[slot] ?? 0 }))
+            .filter(({ amount }) => amount > 0)
+            .map(({ name, color, amount }) => ({
+                name,
+                color,
+                text: metricMode === 'energy'
+                    ? `${formatEnergyValue(amount, energyUnit)} ${energyUnit}`
+                    : formatCost(amount),
+            }));
+
         return {
             label: analysisView === 'averages' ? d.label : d.fullDate,
             energyValue: energyVal, costValue: costVal, demandValue: demandVal, temperature: d.temperature, count: d.count,
             countLabel: analysisView === 'averages' ? `${d.count} complete ${periodName} averaged` : `${d.count?.toLocaleString()} readings`,
-            isPartial, noCompleteData: hasNoCompleteData, periodName
+            isPartial, noCompleteData: hasNoCompleteData, periodName,
+            peakBreakdown: peakBreakdown?.length ? peakBreakdown : undefined,
         };
-    }, [analysisView, groupBy, viewRange]);
+    }, [analysisView, groupBy, viewRange, peakStack, stackArrayKey, metricMode, energyUnit]);
 
     const dataKey = useMemo(() => {
         if (analysisView === 'averages') return metricMode === 'energy' ? 'average' : metricMode === 'demand' ? 'demand' : 'avgCost';
         return metricMode === 'energy' ? 'value' : metricMode === 'demand' ? 'demand' : 'cost';
     }, [analysisView, metricMode]);
 
+    // Nominal peak window shaded behind the hour-of-day profile. Only that view:
+    // its x-axis *is* the hour, so a band lines up with the tariff exactly. The
+    // stacked segments then show how much of each hour really billed at peak,
+    // which is where a weekday-only rule shows itself.
+    const hourBands = useMemo(() => {
+        if (!peakStack || !peakSchedule) return [];
+        if (groupBy !== 'hour' || analysisView !== 'averages') return [];
+
+        // ReferenceArea on a category axis names category values, which here are
+        // the hour labels the averages carry (`key` is the hour itself).
+        const labelOf = new Map<number, string>();
+        for (const entry of chartData as ChartEntry[]) {
+            if (typeof entry.key === 'number' && typeof entry.label === 'string') {
+                labelOf.set(entry.key, entry.label);
+            }
+        }
+        const hours = nominalHourPeriods(peakSchedule);
+        const runs: { periodIdx: number; x1: string; x2: string }[] = [];
+        for (let hour = 0; hour < 24; hour++) {
+            const label = labelOf.get(hour);
+            if (label === undefined) continue;
+            const periodIdx = hours[hour];
+            const previous = runs[runs.length - 1];
+            if (previous && previous.periodIdx === periodIdx) previous.x2 = label;
+            else runs.push({ periodIdx, x1: label, x2: label });
+        }
+        return runs.filter(run => run.periodIdx !== OFF_PEAK);
+    }, [peakStack, peakSchedule, groupBy, analysisView, chartData]);
+
     // Bars get the same vertical fade as the main chart's area fill, via per-Cell
     // gradient refs. The gradient stops are defined in <defs> below using the
     // current chartColor/incompleteColor, so they track metricMode automatically.
-    const getBarColor = useCallback((entry: any): string => {
-        const incomplete = analysisView === 'averages'
+    const isIncompleteEntry = useCallback((entry: ChartEntry): boolean => (
+        analysisView === 'averages'
             ? (entry.isIncomplete || entry.count === 0)
-            : !!(viewRange?.start && viewRange?.end && !isPeriodComplete(entry, viewRange.start, viewRange.end));
-        return incomplete ? 'url(#analysisBarIncomplete)' : 'url(#analysisBarGradient)';
-    }, [analysisView, viewRange]);
+            : !!(viewRange?.start && viewRange?.end && !isPeriodComplete(entry, viewRange.start, viewRange.end))
+    ), [analysisView, viewRange]);
+
+    const getBarColor = useCallback((entry: ChartEntry): string => (
+        isIncompleteEntry(entry) ? 'url(#analysisBarIncomplete)' : 'url(#analysisBarGradient)'
+    ), [isIncompleteEntry]);
 
     const toggleDay = useCallback((day: number) => {
         startTransition(() => {
@@ -298,6 +422,10 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
     
     const hasActiveFilters = filters.daysOfWeek.length > 0 || filters.months.length > 0 ||
         isHourFilterActive(filters.hourRanges) || isTempFilterActive;
+
+    // The chart is showing fewer bars than there are periods, so the footer says
+    // so rather than reporting the sampled count as the whole truth.
+    const isTimelineCapped = analysisView === 'timeline' && chartData.length < filteredTimeline.length;
 
     const incompletePeriods = useMemo(() => {
         if (analysisView !== 'timeline' || !viewRange?.start || !viewRange?.end) return 0;
@@ -376,6 +504,18 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                 </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#475569" />
+                            {hourBands.map((run) => (
+                                <ReferenceArea
+                                    key={`${run.periodIdx}-${run.x1}`}
+                                    yAxisId="primary"
+                                    x1={run.x1}
+                                    x2={run.x2}
+                                    fill={PEAK_COLORS[peakSchedule!.periods[run.periodIdx].colorKey]}
+                                    fillOpacity={0.1}
+                                    strokeOpacity={0}
+                                    ifOverflow="hidden"
+                                />
+                            ))}
                             <XAxis dataKey={xAxisDataKey} stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={analysisView === 'timeline'} axisLine={false} minTickGap={40} />
                             <YAxis yAxisId="primary" stroke="#94a3b8" fontSize={10} tick={AXIS_TICK} tickLine={true} axisLine={false} tickFormatter={yAxisFormatter} width={50} domain={analysisDomain} />
                             {showWeather && weatherData?.size && (
@@ -389,9 +529,35 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                                 )} 
                                 {...(isTouchDevice ? { active: activeIndex !== null } : {})} 
                             />
-                            <Bar yAxisId="primary" dataKey={dataKey} fill={chartColor} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                                {chartData.map((entry, index) => (<Cell key={`cell-${index}`} fill={getBarColor(entry)} />))}
-                            </Bar>
+                            {peakStack ? (
+                                // One stacked segment per rate period. A day or month bar
+                                // genuinely contains both peak and off-peak hours, so it is
+                                // split rather than shaded a single (wrong) color.
+                                peakStack.map(({ slot, name, color }, i) => (
+                                    <Bar
+                                        key={name}
+                                        yAxisId="primary"
+                                        stackId="period"
+                                        name={name}
+                                        dataKey={(entry: ChartEntry) => entry[stackArrayKey]?.[slot] ?? 0}
+                                        fill={color}
+                                        isAnimationActive={false}
+                                        radius={i === peakStack.length - 1 ? [4, 4, 0, 0] : undefined}
+                                    >
+                                        {chartData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={isIncompleteEntry(entry) ? incompleteColor : color}
+                                                fillOpacity={isIncompleteEntry(entry) ? 0.5 : 0.9}
+                                            />
+                                        ))}
+                                    </Bar>
+                                ))
+                            ) : (
+                                <Bar yAxisId="primary" dataKey={dataKey} fill={chartColor} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                                    {chartData.map((entry, index) => (<Cell key={`cell-${index}`} fill={getBarColor(entry)} />))}
+                                </Bar>
+                            )}
                             {showWeather && weatherData?.size && (
                                 <Line yAxisId="temperature" type="monotone" dataKey="temperature" stroke="#38bdf8" strokeWidth={2} dot={false} connectNulls />
                             )}
@@ -399,6 +565,27 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     </ResponsiveContainer>
                 )}
             </div>
+
+            {hasPeakSchedule && chartData.length > 0 && (
+                <div className="flex items-center gap-3 flex-wrap px-4 pb-3 -mt-1 text-xs">
+                    {peakStack?.map(({ name, color }) => (
+                        <span key={name} className="flex items-center gap-1.5 text-slate-400">
+                            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color, opacity: 0.9 }} />
+                            {name}
+                        </span>
+                    ))}
+                    {/* Only claim the demand reason when demand is actually the
+                        reason — a stack can also be withheld because the rows
+                        have not caught up with the schedule yet, which is
+                        transient and not worth explaining. */}
+                    {!peakStack && metricMode === 'demand' && (
+                        <span className="text-slate-500 italic">
+                            Peak demand is a maximum, not a total, so bars can't be stacked by rate
+                            period — the Peak Rate Split card has the highest demand in each
+                        </span>
+                    )}
+                </div>
+            )}
 
             <div className="flex-1 border-t border-header-line p-4 space-y-5 overflow-y-auto">
                 <div className="flex flex-col gap-2">
@@ -436,7 +623,10 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                         </span>
                         {!showProcessingOverlay && analysisView === 'timeline' && (
                             <span className="text-slate-600">
-                                {chartData.length} {groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'}
+                                {filteredTimeline.length.toLocaleString()} {groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'}
+                                {isTimelineCapped && (
+                                    <span className="text-amber-500/70" title={`Charting ${chartData.length.toLocaleString()} of ${filteredTimeline.length.toLocaleString()} periods — more bars than pixels`}> · sampled</span>
+                                )}
                                 {incompletePeriods > 0 && <span className="text-amber-500/70"> · {incompletePeriods} partial</span>}
                             </span>
                         )}

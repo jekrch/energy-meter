@@ -1,8 +1,8 @@
 /// <reference types="bun-types" />
 import { describe, it, expect } from 'bun:test';
-import { serializeNativeFile, tryParseNativeJson, NATIVE_FORMAT } from './nativeFormat';
+import { datasetNativeOptions, serializeNativeFile, tryParseNativeJson, NATIVE_FORMAT } from './nativeFormat';
 import { parseGreenButtonFile } from './dataUtils';
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
 
 const sample: DataPoint[] = [
   { timestamp: 1735689600, value: 412, cost: 5100, duration: 900 },
@@ -76,5 +76,107 @@ describe('parser dispatch', () => {
     const csv = 'Date,Time,Usage (kWh)\n2026-01-01,00:00,1.5\n2026-01-01,01:00,2.0\n';
     const result = parseGreenButtonFile(csv);
     expect(result.blocks[0].data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('native format — peak schedule (v2)', () => {
+  const schedule: PeakSchedule = {
+    version: 1,
+    periods: [{
+      id: 'p1',
+      name: 'On-Peak',
+      colorKey: 'red',
+      rules: [{ hourRanges: [{ start: 14, end: 18 }], daysOfWeek: [1, 2, 3, 4, 5], months: [5, 6, 7, 8] }],
+    }],
+    observeHolidays: true,
+    holidayRules: ['independence', 'christmas'],
+    extraHolidays: ['2025-08-06'],
+    label: 'Test tariff',
+  };
+
+  const opts = { fileName: 'x', resolution: 'RAW', sources: [] };
+
+  it('writes version 2 and round-trips the schedule', () => {
+    const json = serializeNativeFile(sample, { ...opts, peakSchedule: schedule });
+    expect(JSON.parse(json).version).toBe(2);
+    expect(tryParseNativeJson(json)!.peakSchedule).toEqual(schedule);
+  });
+
+  it('omits the field entirely when there is no schedule', () => {
+    const json = serializeNativeFile(sample, opts);
+    expect('peakSchedule' in JSON.parse(json)).toBe(false);
+    expect(tryParseNativeJson(json)!.peakSchedule).toBeUndefined();
+  });
+
+  it('reads a v1 file — no schedule, and the data still parses', () => {
+    const v1 = JSON.stringify({
+      format: NATIVE_FORMAT,
+      version: 1,
+      fileName: 'old',
+      createdAt: 0,
+      resolution: 'RAW',
+      sources: [],
+      data: sample.map((d) => ({ t: d.timestamp, v: d.value, c: d.cost, d: d.duration })),
+    });
+    const parsed = tryParseNativeJson(v1)!;
+    expect(parsed.peakSchedule).toBeUndefined();
+    expect(parsed.blocks[0].data).toEqual(sample);
+  });
+
+  it('tolerates an unknown extra field alongside the schedule', () => {
+    const withExtra = JSON.parse(serializeNativeFile(sample, { ...opts, peakSchedule: schedule }));
+    withExtra.somethingNewer = { nested: true };
+    const parsed = tryParseNativeJson(JSON.stringify(withExtra))!;
+    expect(parsed.peakSchedule).toEqual(schedule);
+    expect(parsed.blocks[0].data).toEqual(sample);
+  });
+
+  it('drops a malformed schedule without failing the data load', () => {
+    const broken = JSON.parse(serializeNativeFile(sample, opts));
+    broken.peakSchedule = { version: 1, periods: [{ id: 'p', name: 'x', colorKey: 'chartreuse', rules: [] }] };
+    const parsed = tryParseNativeJson(JSON.stringify(broken))!;
+    expect(parsed.peakSchedule).toBeUndefined();
+    expect(parsed.blocks[0].data).toEqual(sample);
+  });
+
+  it('survives the full upload dispatch path', () => {
+    const json = serializeNativeFile(sample, { ...opts, peakSchedule: schedule });
+    expect(parseGreenButtonFile(json).peakSchedule).toEqual(schedule);
+  });
+});
+
+describe('datasetNativeOptions', () => {
+  const schedule: PeakSchedule = {
+    version: 1,
+    periods: [{
+      id: 'p1',
+      name: 'On-Peak',
+      colorKey: 'red',
+      rules: [{ hourRanges: [{ start: 14, end: 18 }], daysOfWeek: [1, 2, 3, 4, 5], months: [] }],
+    }],
+    observeHolidays: true,
+    holidayRules: [],
+    extraHolidays: [],
+  };
+
+  it('describes the dataset as one source spanning its readings', () => {
+    const opts = datasetNativeOptions(sample, { fileName: 'meter.csv', resolution: 'RAW' });
+    expect(opts.fileName).toBe('meter');
+    expect(opts.sources).toEqual([{
+      fileName: 'meter',
+      startDate: sample[0].timestamp,
+      endDate: sample[sample.length - 1].timestamp,
+      recordCount: sample.length,
+    }]);
+  });
+
+  it('falls back to a default name when there is no file name', () => {
+    expect(datasetNativeOptions(sample, { fileName: null, resolution: 'RAW' }).fileName).toBe('energy-data');
+    expect(datasetNativeOptions(sample, { resolution: 'RAW' }).fileName).toBe('energy-data');
+  });
+
+  it('carries the schedule into a file that re-parses with it', () => {
+    const opts = datasetNativeOptions(sample, { fileName: 'meter.json', resolution: 'RAW', peakSchedule: schedule });
+    expect(tryParseNativeJson(serializeNativeFile(sample, opts))!.peakSchedule).toEqual(schedule);
   });
 });

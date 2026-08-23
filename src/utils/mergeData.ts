@@ -1,4 +1,5 @@
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
+import { scheduleFingerprint } from './peakSchedule';
 
 // Combine two or more previously-loaded datasets into a single continuous
 // history. The main hazard is overlapping intervals: if a user merges a "Jan"
@@ -15,6 +16,8 @@ export interface MergeSource {
   flowDirection?: number;
   commodity?: number;
   intervalLength?: number;
+  // The peak rate schedule stored with this source, if any.
+  peakSchedule?: PeakSchedule;
 }
 
 export interface MergeSourceMeta {
@@ -29,6 +32,10 @@ export interface MergeResult {
   overlapCount: number;            // intervals that collided and were deduped
   gapCount: number;                // boundaries where readings are missing
   sources: MergeSourceMeta[];
+  // The first source schedule that defines any period. A merged range may span
+  // a tariff change, so this is a starting point, not an authoritative answer —
+  // see the differing-schedule warning below.
+  peakSchedule?: PeakSchedule;
 }
 
 // A merge result enriched with everything the preview/confirm UI needs.
@@ -105,7 +112,9 @@ export function mergeDatasets(sources: MergeSource[]): MergeResult {
     };
   });
 
-  return { data, overlapCount, gapCount, sources: sourceMeta };
+  const peakSchedule = sources.find(s => s.peakSchedule?.periods.length)?.peakSchedule;
+
+  return { data, overlapCount, gapCount, sources: sourceMeta, ...(peakSchedule ? { peakSchedule } : {}) };
 }
 
 // Count boundaries in a sorted, deduped series where at least one interval is
@@ -165,6 +174,18 @@ export function detectMergeWarnings(sources: MergeSource[]): string[] {
     if (min > 0 && max / min >= 20) {
       warnings.push('These files have very different usage magnitudes — they may be different meters or flow directions.');
     }
+  }
+
+  // A warning rather than a blocker: the merged range may genuinely straddle a
+  // tariff change, in which case neither schedule is wrong for the whole span.
+  const fingerprints = new Set(
+    sources
+      .map((s) => s.peakSchedule)
+      .filter((s): s is PeakSchedule => (s?.periods.length ?? 0) > 0)
+      .map(scheduleFingerprint),
+  );
+  if (fingerprints.size > 1) {
+    warnings.push('These files carry different peak rate schedules — the merged file keeps the first one.');
   }
 
   return warnings;

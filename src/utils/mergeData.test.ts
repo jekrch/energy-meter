@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 import { describe, it, expect } from 'bun:test';
 import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergeSource } from './mergeData';
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
 
 const pts = (start: number, count: number, step = 3600, value = 100): DataPoint[] =>
   Array.from({ length: count }, (_, i) => ({
@@ -153,5 +153,53 @@ describe('buildMergeName', () => {
 
   it('summarizes many files', () => {
     expect(buildMergeName(['Jan.xml', 'Feb.xml', 'Mar.xml', 'Apr.xml'])).toBe('Jan + 3 more (merged)');
+  });
+});
+
+describe('peak schedule across a merge', () => {
+  const sched = (hours: number, label: string): PeakSchedule => ({
+    version: 1,
+    periods: [{
+      id: 'p1', name: 'On-Peak', colorKey: 'red',
+      rules: [{ hourRanges: [{ start: 14, end: hours }], daysOfWeek: [1, 2, 3, 4, 5], months: [] }],
+    }],
+    observeHolidays: true,
+    holidayRules: ['independence'],
+    extraHolidays: [],
+    label,
+  });
+
+  const withSchedule = (fileName: string, peakSchedule?: PeakSchedule): MergeSource =>
+    ({ fileName, data: pts(1000, 3), ...(peakSchedule ? { peakSchedule } : {}) });
+
+  it('carries the first source schedule onto the merged result', () => {
+    const result = mergeDatasets([withSchedule('a', sched(18, 'A')), withSchedule('b', sched(20, 'B'))]);
+    expect(result.peakSchedule?.label).toBe('A');
+  });
+
+  it('skips past sources that have no schedule, or an empty one', () => {
+    const empty: PeakSchedule = { ...sched(18, 'Empty'), periods: [] };
+    const result = mergeDatasets([withSchedule('a'), withSchedule('b', empty), withSchedule('c', sched(20, 'C'))]);
+    expect(result.peakSchedule?.label).toBe('C');
+  });
+
+  it('leaves the field undefined when no source has one', () => {
+    expect(mergeDatasets([withSchedule('a'), withSchedule('b')]).peakSchedule).toBeUndefined();
+  });
+
+  it('warns — but does not block — when the sources disagree', () => {
+    const sources = [withSchedule('a', sched(18, 'A')), withSchedule('b', sched(20, 'B'))];
+    expect(detectMergeWarnings(sources).some(w => w.includes('peak rate schedules'))).toBe(true);
+    expect(detectMergeBlockers(sources)).toEqual([]);
+  });
+
+  it('stays quiet when the schedules differ only in name', () => {
+    const sources = [withSchedule('a', sched(18, 'A')), withSchedule('b', sched(18, 'Same rules, other name'))];
+    expect(detectMergeWarnings(sources).some(w => w.includes('peak rate schedules'))).toBe(false);
+  });
+
+  it('stays quiet when only one source carries a schedule', () => {
+    const sources = [withSchedule('a', sched(18, 'A')), withSchedule('b')];
+    expect(detectMergeWarnings(sources).some(w => w.includes('peak rate schedules'))).toBe(false);
   });
 });

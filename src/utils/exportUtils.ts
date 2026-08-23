@@ -151,6 +151,9 @@ export function buildRawRow(
   celsiusToUnit: (c: number) => number,
   timeFmt: Intl.DateTimeFormat,
   rateUnit: RateUnitConfig,
+  // Peak period name for a timestamp, or null for off-peak. Only meaningful
+  // per reading, so there is no counterpart in buildAggRow.
+  peakLookup: ((ts: number) => string | null) | null = null,
 ): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   const dateObj = new Date(point.timestamp * 1000);
@@ -174,6 +177,9 @@ export function buildRawRow(
     row[`temperature_${temperatureUnit.toLowerCase()}`] = temp != null
       ? parseFloat(celsiusToUnit(temp).toFixed(1))
       : null;
+  }
+  if (peakLookup && enabledKeys.has('peakPeriod')) {
+    row.peak_period = peakLookup(point.timestamp) ?? 'Off-Peak';
   }
   if (enabledKeys.has('rate')) {
     row[rateUnit.columnKey] = computeRate(point.cost, point.value, rateUnit);

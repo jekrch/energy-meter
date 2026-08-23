@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  History, X, Calendar, Hash, Loader2, Trash2, ChevronRight,
+  History, X, Calendar, Hash, Loader2, Trash2, ChevronRight, Download,
   GitMerge, Check, Square, CheckSquare, AlertTriangle, ArrowLeft, Ban, Upload,
 } from 'lucide-react';
 import { Modal, type ModalHandle } from './Modal';
@@ -13,6 +13,10 @@ interface RecentFilesModalProps {
   onLoad: (id: number) => Promise<void>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onDelete: (id: number) => void;
+  // Saves the entry as a compact, re-loadable .json — readings plus whatever
+  // peak schedule it holds. Loads it into the app too when `load` is set;
+  // otherwise the dataset in front of the user is left alone.
+  onDownload?: (id: number, opts: { load: boolean }) => Promise<void> | void;
   onClose: () => void;
   onMergePreview?: (ids: number[]) => Promise<MergePreview | null>;
   onMergeConfirm?: (
@@ -40,12 +44,19 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   onLoad,
   onUpload,
   onDelete,
+  onDownload,
   onClose,
   onMergePreview,
   onMergeConfirm,
 }) => {
   const modalRef = useRef<ModalHandle>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  // The row whose save options are open, and the choice made in them. Saving is
+  // the point of the action; loading is the opt-in extra, since it replaces
+  // whatever dataset is currently open.
+  const [saveOptionsId, setSaveOptionsId] = useState<number | null>(null);
+  const [alsoLoad, setAlsoLoad] = useState(false);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     onUpload(e);
@@ -65,6 +76,19 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
     setLoadingId(id);
     await onLoad(id);
     setLoadingId(null);
+  };
+
+  const openSaveOptions = (id: number) => {
+    setSaveOptionsId((prev) => (prev === id ? null : id));
+    setAlsoLoad(false);
+  };
+
+  const handleDownload = async (id: number) => {
+    if (!onDownload) return;
+    setSavingId(id);
+    await onDownload(id, { load: alsoLoad });
+    setSavingId(null);
+    setSaveOptionsId(null);
   };
 
   const toggleSelected = (id: number) => {
@@ -210,18 +234,23 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
           const start = formatShortDate(new Date(entry.startDate * 1000));
           const end = formatShortDate(new Date(entry.endDate * 1000));
           const isLoading = loadingId === entry.id;
+          const isSaving = savingId === entry.id;
           const isSelected = selected.has(entry.id);
+          const saveOpen = saveOptionsId === entry.id && !selectMode;
 
           return (
             <div
               key={entry.id}
               onClick={selectMode ? () => toggleSelected(entry.id) : undefined}
-              className={`flex items-center gap-2 px-3 py-3 bg-sunken border rounded-lg transition-colors group ${
+              className={`bg-sunken border rounded-lg transition-colors group ${
                 selectMode
                   ? `cursor-pointer ${isSelected ? 'border-emerald-500/50' : 'border-line hover:border-emerald-500/30'}`
-                  : 'border-line hover:border-emerald-500/30'
+                  : saveOpen
+                    ? 'border-emerald-500/40'
+                    : 'border-line hover:border-emerald-500/30'
               }`}
             >
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-3">
               {selectMode && (
                 <span className="shrink-0 text-emerald-400">
                   {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-slate-600" />}
@@ -230,7 +259,10 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
 
               <div className="flex-1 min-w-0 space-y-1">
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors">
+                  <span
+                    title={entry.fileName}
+                    className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors"
+                  >
                     {entry.fileName}
                   </span>
                   {entry.isMerged && (
@@ -260,6 +292,25 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
 
               {!selectMode && (
                 <>
+                  {onDownload && (
+                    <button
+                      onClick={() => openSaveOptions(entry.id)}
+                      disabled={isSaving}
+                      title="Save as .json — a smaller, re-loadable copy that keeps this file's peak rate periods"
+                      className={`shrink-0 p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                        saveOpen
+                          ? 'text-emerald-300 bg-emerald-500/10'
+                          : 'text-slate-600 hover:text-emerald-300 hover:bg-emerald-500/10'
+                      }`}
+                      aria-label="Save as JSON"
+                      aria-expanded={saveOpen}
+                    >
+                      {isSaving
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Download className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => onDelete(entry.id)}
                     disabled={isLoading}
@@ -272,16 +323,60 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
                   <button
                     onClick={() => handleLoad(entry.id)}
                     disabled={isLoading || loadingId !== null}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                    aria-label="Load"
+                    className="shrink-0 flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                   >
                     {isLoading ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
                       <ChevronRight className="w-3.5 h-3.5" />
                     )}
-                    Load
+                    {/* Below sm the chevron carries it — meter file names are long
+                        and the label costs the title ~50px it can use. */}
+                    <span className="hidden sm:inline">Load</span>
                   </button>
                 </>
+              )}
+              </div>
+
+              {saveOpen && (
+                <div className="px-2.5 sm:px-3 pb-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer text-[12px] text-slate-300 select-none">
+                    <span
+                      className={`flex items-center justify-center w-4 h-4 rounded border transition-colors ${
+                        alsoLoad ? 'bg-emerald-600/30 border-emerald-500/50' : 'border-line'
+                      }`}
+                    >
+                      {alsoLoad && <Check className="w-3 h-3 text-emerald-300" />}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alsoLoad}
+                      onChange={(e) => setAlsoLoad(e.target.checked)}
+                      className="sr-only"
+                    />
+                    Open it here too
+                  </label>
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <button
+                      onClick={() => setSaveOptionsId(null)}
+                      disabled={isSaving}
+                      className="px-2.5 py-1.5 text-slate-400 hover:text-slate-200 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleDownload(entry.id)}
+                      disabled={isSaving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-40"
+                    >
+                      {isSaving
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Download className="w-3.5 h-3.5" />}
+                      Save .json
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           );
@@ -383,7 +478,7 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
                 )}
                 {mergeEnabled && entries.length >= 2 && (
                   <button
-                    onClick={() => setSelectMode(true)}
+                    onClick={() => { setSaveOptionsId(null); setSelectMode(true); }}
                     className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-slate-300 hover:text-emerald-300 border border-line hover:border-emerald-500/40 text-xs font-medium rounded-lg transition-colors"
                   >
                     <GitMerge className="w-3.5 h-3.5" />

@@ -68,3 +68,7 @@ export const RESOLUTIONS: Record<string, { label: string; seconds: number }> = {
     WEEKLY: { label: 'Weekly Sum', seconds: 604800 },
 };
 
+// Time-of-use peak rate schedule — model lives in its own file to keep this one
+// navigable, re-exported here so `from '../types'` stays the single import.
+export type { PeakColorKey, PeakRule, PeakPeriod, PeakSchedule } from './peakSchedule';
+export { PEAK_COLORS, PEAK_COLOR_KEYS, OFF_PEAK, emptyRule } from './peakSchedule';

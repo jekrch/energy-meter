@@ -1,4 +1,5 @@
-import { type DataPoint, DAYS_OF_WEEK, MONTHS } from '../types';
+import { type DataPoint, DAYS_OF_WEEK, MONTHS, OFF_PEAK } from '../types';
+import { classify, type PeakIndex } from '../utils/peakSchedule';
 import { formatShortDate, formatChartTime, formatMonthYear } from '../utils/formatters';
 import { toDemandKW } from '../utils/demandUnits';
 import type {
@@ -12,10 +13,25 @@ export type AnalysisGroupBy = 'dayOfWeek' | 'month' | 'hour';
 // Accumulate a single reading into the timeline bucket map (mutates `map`).
 // Keyed by calendar period (month / day / hour) so each period aggregates once.
 // Extracted from the chunked effect in useAnalysis so the math is unit-testable.
+// Slot a reading's rate period occupies in a bucket's per-period arrays.
+// Off-peak is the last slot so the arrays stay dense and index-aligned with
+// `schedule.periods`.
+export const peakSlot = (index: PeakIndex, timestamp: number): number => {
+  const periodIdx = classify(timestamp, index);
+  return periodIdx === OFF_PEAK ? index.schedule.periods.length : periodIdx;
+};
+
+export const peakSlotCount = (index: PeakIndex | null): number =>
+  index ? index.schedule.periods.length + 1 : 0;
+
 export function accumulateBucket(
   map: Map<string, TimelineBucket>,
   d: DataPoint,
   groupBy: AnalysisGroupBy,
+  // When present, each bucket also tracks how its energy and cost divide across
+  // the rate periods, which is what lets a day or month bar be stacked rather
+  // than shaded a single (and therefore wrong) color.
+  peakIndex: PeakIndex | null = null,
 ): void {
   const ts = d.timestamp * 1000;
   const date = new Date(ts);
@@ -58,17 +74,23 @@ export function accumulateBucket(
   }
 
   const demand = toDemandKW(d.value, d.duration);
+  const cost = d.cost ?? 0;
 
   const existing = map.get(tlKey);
   if (existing) {
     existing.sum += d.value;
-    existing.costSum += d.cost ?? 0;
+    existing.costSum += cost;
     if (demand > existing.demandMax) existing.demandMax = demand;
     existing.count += 1;
+    if (peakIndex && existing.periodValues && existing.periodCosts) {
+      const slot = peakSlot(peakIndex, d.timestamp);
+      existing.periodValues[slot] += d.value;
+      existing.periodCosts[slot] += cost;
+    }
   } else {
-    map.set(tlKey, {
+    const bucket: TimelineBucket = {
       sum: d.value,
-      costSum: d.cost ?? 0,
+      costSum: cost,
       demandMax: demand,
       count: 1,
       timestamp: sortTs,
@@ -76,7 +98,16 @@ export function accumulateBucket(
       categoryKey,
       periodStart,
       periodEnd,
-    });
+    };
+    if (peakIndex) {
+      const slots = peakSlotCount(peakIndex);
+      bucket.periodValues = new Array<number>(slots).fill(0);
+      bucket.periodCosts = new Array<number>(slots).fill(0);
+      const slot = peakSlot(peakIndex, d.timestamp);
+      bucket.periodValues[slot] = d.value;
+      bucket.periodCosts[slot] = cost;
+    }
+    map.set(tlKey, bucket);
   }
 }
 
@@ -85,9 +116,10 @@ export function accumulateBucket(
 export function aggregateBuckets(
   data: DataPoint[],
   groupBy: AnalysisGroupBy,
+  peakIndex: PeakIndex | null = null,
 ): Map<string, TimelineBucket> {
   const map = new Map<string, TimelineBucket>();
-  for (const d of data) accumulateBucket(map, d, groupBy);
+  for (const d of data) accumulateBucket(map, d, groupBy, peakIndex);
   return map;
 }
 
@@ -96,6 +128,8 @@ export function finalizeBuckets(
   timelineMap: Map<string, TimelineBucket>,
   groupCount: number,
   labels: string[],
+  // periods.length + 1 (the off-peak slot), or 0 when no schedule is active.
+  periodSlots = 0,
 ): { averages: AnalysisAverageResult[]; timeline: AnalysisTimelineResult[] } {
   const timeline: AnalysisTimelineResult[] = Array.from(timelineMap.values())
     .sort((a, b) => a.timestamp - b.timestamp)
@@ -109,10 +143,21 @@ export function finalizeBuckets(
       categoryKey: g.categoryKey,
       periodStart: g.periodStart,
       periodEnd: g.periodEnd,
+      periodValues: g.periodValues,
+      periodCosts: g.periodCosts,
     }));
 
-  const categoryTotals: { values: number[]; costs: number[]; demands: number[] }[] =
-    Array.from({ length: groupCount }, () => ({ values: [], costs: [], demands: [] }));
+  const categoryTotals: {
+    values: number[];
+    costs: number[];
+    demands: number[];
+    periodValues: number[];
+    periodCosts: number[];
+  }[] = Array.from({ length: groupCount }, () => ({
+    values: [], costs: [], demands: [],
+    periodValues: new Array<number>(periodSlots).fill(0),
+    periodCosts: new Array<number>(periodSlots).fill(0),
+  }));
 
   for (const period of timelineMap.values()) {
     const cat = categoryTotals[period.categoryKey];
@@ -120,6 +165,12 @@ export function finalizeBuckets(
       cat.values.push(period.sum);
       cat.costs.push(period.costSum);
       cat.demands.push(period.demandMax);
+      if (period.periodValues && period.periodCosts) {
+        for (let i = 0; i < periodSlots; i++) {
+          cat.periodValues[i] += period.periodValues[i];
+          cat.periodCosts[i] += period.periodCosts[i];
+        }
+      }
     }
   }
 
@@ -142,6 +193,14 @@ export function finalizeBuckets(
         ? group.demands.reduce((a, b) => a + b, 0) / demandCount
         : 0,
       count: valueCount,
+      // Divided by the same denominator as `average`, so the stacked segments
+      // still sum to the bar's height.
+      periodAverages: periodSlots
+        ? group.periodValues.map(v => (valueCount > 0 ? Math.round(v / valueCount) : 0))
+        : undefined,
+      periodAvgCosts: periodSlots
+        ? group.periodCosts.map(c => (costCount > 0 ? Math.round(c / costCount) : 0))
+        : undefined,
     };
   });
 

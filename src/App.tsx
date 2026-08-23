@@ -3,11 +3,11 @@ import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Doll
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
-import { type TimeRange, type MetricMode } from './types';
+import { type TimeRange, type MetricMode, type PeakSchedule } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
 import { createBrushData, type IntervalBlockMeta } from './utils/dataUtils';
 import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergePreview, type MergeSource } from './utils/mergeData';
-import { downloadNativeFile } from './utils/nativeFormat';
+import { downloadDatasetFile, downloadNativeFile } from './utils/nativeFormat';
 import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
 import { toDemandKW, formatDemandValue } from './utils/demandUnits';
 import { aggregateWeatherData } from './utils/weatherData';
@@ -18,7 +18,10 @@ import { useAnalysis } from './hooks/useAnalysis';
 import { useWeather } from './hooks/useWeather';
 import { useEnergyData } from './hooks/useEnergyData';
 import { useChartProcessing } from './hooks/useChartProcessing';
-import { useFileHistory } from './hooks/useFileHistory';
+import { useFileHistory, type FileHistoryEntry } from './hooks/useFileHistory';
+import { usePersistentState } from './hooks/usePersistentState';
+import { sanitizePeakSchedule } from './utils/peakSchedule';
+import { DEMO_PEAK_SCHEDULE } from './utils/demoPeakSchedule';
 
 // Components
 import { StatCard } from './components/common/StatCard';
@@ -33,6 +36,7 @@ import { ChartToolbar } from './components/dashboard/ChartToolbar';
 import { InsightsModal, type InsightPreset } from './components/common/InsightsModal';
 import type { RankingEntry } from './utils/rankings';
 import { RateChangesCard } from './components/dashboard/RateChangesCard';
+import { PeakSplitCard } from './components/dashboard/PeakSplitCard';
 import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 import { BlockPickerModal } from './components/common/BlockPickerModal';
@@ -48,8 +52,46 @@ export default function App() {
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
   // File history (IndexedDB)
-  const { entries: historyEntries, saveEntry, loadEntry, deleteEntry } = useFileHistory();
+  const { entries: historyEntries, saveEntry, updateEntry, loadEntry, deleteEntry } = useFileHistory();
   const [showRecentFiles, setShowRecentFiles] = useState(false);
+
+  // Peak rate schedule. It belongs to the dataset, not to the browser: Green
+  // Button data carries no rate metadata, so a schedule is only ever what the
+  // loaded data brought with it (a native file's `peakSchedule`, a history
+  // entry's, the demo's) or what the user typed in for the data in front of
+  // them. Every load starts from nothing — see onLoadStart — so a schedule can
+  // never follow the user onto a file it says nothing about.
+  const [rawPeakSchedule, setRawPeakSchedule] = useState<PeakSchedule | null>(null);
+  const [showPeakBands, setShowPeakBands] = usePersistentState('peakBandsVisible', true);
+  // Re-validated on read: what arrives may have been written by an older build,
+  // hand-edited in a shared file, or pasted into the editor's import box.
+  const peakSchedule = useMemo(() => sanitizePeakSchedule(rawPeakSchedule), [rawPeakSchedule]);
+
+  // Read by the upload pipeline, which adopts a file's schedule and saves the
+  // history entry in the same tick — before React has re-rendered, so state
+  // alone would still read null there.
+  const peakScheduleRef = useRef<PeakSchedule | null>(null);
+
+  // Which history entry the open dataset came from — the row that schedule edits
+  // are written back to. Set when an entry is saved or loaded, cleared whenever a
+  // different dataset starts loading. `persistedSchedule` is the schedule that
+  // row already holds, serialized, so adopting an entry's own schedule on load
+  // does not immediately write it back.
+  const historyEntryIdRef = useRef<number | null>(null);
+  const persistedScheduleRef = useRef<string | null>(null);
+
+  const trackHistoryEntry = useCallback((id: number | null, schedule?: PeakSchedule | null) => {
+    historyEntryIdRef.current = id;
+    persistedScheduleRef.current = JSON.stringify(schedule ?? null);
+  }, []);
+
+  const applyPeakSchedule = useCallback((next: PeakSchedule | null) => {
+    peakScheduleRef.current = sanitizePeakSchedule(next);
+    setRawPeakSchedule(next);
+    // A schedule that just arrived is worth showing without a second click, and
+    // clearing one should not leave a dangling toggle.
+    setShowPeakBands((next?.periods.length ?? 0) > 0);
+  }, [setShowPeakBands]);
 
   // Dataset, upload pipeline, and data bounds
   const {
@@ -68,14 +110,30 @@ export default function App() {
     reset,
   } = useEnergyData({
     setResolution,
-    onLoadStart: () => setPage(1),
-    onDataLoaded: useCallback((name: string, data: Parameters<typeof saveEntry>[1], res: string, meta?: IntervalBlockMeta) => {
-      saveEntry(name, data, res, meta && {
-        flowDirection: meta.flowDirection,
-        commodity: meta.commodity,
-        intervalLength: meta.intervalLength,
+    onLoadStart: (source) => {
+      setPage(1);
+      // Clean slate for the incoming dataset: whatever schedule the last one had
+      // is not this one's. Anything the new data carries is applied a moment
+      // later, once it has been parsed. The demo is the only dataset that ships
+      // with a schedule of its own — a generated meter with generated rates.
+      applyPeakSchedule(source === 'sample' ? DEMO_PEAK_SCHEDULE : null);
+      // The incoming dataset has no history row yet; loadFromHistory / the save
+      // below name one a moment later.
+      trackHistoryEntry(null);
+    },
+    onDataLoaded: useCallback(async (name: string, data: Parameters<typeof saveEntry>[1], res: string, meta?: IntervalBlockMeta) => {
+      const schedule = peakScheduleRef.current ?? undefined;
+      const id = await saveEntry(name, data, res, {
+        flowDirection: meta?.flowDirection,
+        commodity: meta?.commodity,
+        intervalLength: meta?.intervalLength,
+        // Whatever schedule is in force when the file loads, so reopening the
+        // entry from Recent Files brings its rate periods back with it.
+        peakSchedule: schedule,
       });
-    }, [saveEntry]),
+      trackHistoryEntry(id, schedule);
+    }, [saveEntry, trackHistoryEntry]),
+    onPeakScheduleLoaded: applyPeakSchedule,
   });
 
   // Time State
@@ -100,6 +158,7 @@ export default function App() {
 
   // Weather hook
   const weather = useWeather(dataBounds.start, dataBounds.end);
+
 
   // --- Effects & Data Logic ---
 
@@ -156,7 +215,7 @@ export default function App() {
     isDataSampled,
     sampledCount,
     originalCount
-  } = useAnalysis(activeTab, viewData, groupBy);
+  } = useAnalysis(activeTab, viewData, groupBy, showPeakBands ? peakSchedule : null);
 
   const { isProcessing, chartData } = useChartProcessing(viewData, resolution);
 
@@ -278,15 +337,23 @@ export default function App() {
     return Math.ceil(max / magnitude) * magnitude;
   }, [dataExtents.maxDemand]);
 
+  // O(n) rather than Math.max(...spread), for the same reason dataExtents is:
+  // the timeline has a row per calendar bucket, and grouping a long dataset by
+  // hour makes that array big enough for a spread to overflow the call stack.
   const currentAnalysisMax = useMemo(() => {
+    let max = 0;
     if (analysisView === 'averages') {
-      const data = analysisResults.averages;
-      if (!data.length) return 0;
-      return Math.max(...data.map(d => (metricMode === 'energy' ? d.average : metricMode === 'demand' ? d.demand : d.avgCost) || 0));
+      for (const d of analysisResults.averages) {
+        const v = (metricMode === 'energy' ? d.average : metricMode === 'demand' ? d.demand : d.avgCost) || 0;
+        if (v > max) max = v;
+      }
+    } else {
+      for (const d of analysisResults.timeline) {
+        const v = (metricMode === 'energy' ? d.value : metricMode === 'demand' ? d.demand : d.cost) || 0;
+        if (v > max) max = v;
+      }
     }
-    const data = analysisResults.timeline;
-    if (!data.length) return 0;
-    return Math.max(...data.map(d => (metricMode === 'energy' ? d.value : metricMode === 'demand' ? d.demand : d.cost) || 0));
+    return max;
   }, [analysisResults, analysisView, metricMode]);
 
   const analysisDomain = useMemo((): [number, number] => {
@@ -401,15 +468,60 @@ export default function App() {
     requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [dataBounds, setGroupBy, setAnalysisView]);
 
+  // Schedule edits made after the load belong to the dataset just as much as one
+  // that arrived with it, so they are written back onto its history row — Recent
+  // Files then reopens the file with the rate periods the user last had. Skipped
+  // when the schedule already matches what that row holds, which is the case
+  // right after loading an entry that carried one.
+  useEffect(() => {
+    const id = historyEntryIdRef.current;
+    if (id == null) return;
+    const serialized = JSON.stringify(peakSchedule ?? null);
+    if (serialized === persistedScheduleRef.current) return;
+    persistedScheduleRef.current = serialized;
+    void updateEntry(id, { peakSchedule: peakSchedule ?? undefined });
+  }, [peakSchedule, updateEntry]);
+
+  // Save the loaded dataset with its peak schedule embedded, straight from the
+  // peak editor — the same native .json the export panel and the merge flow
+  // write, so re-loading it restores readings and rate periods together. Always
+  // the whole dataset, not the zoomed view: this is "save my file", not an
+  // export of what is on screen.
+  const handleSaveDataFile = useCallback(() => {
+    if (!rawData?.length) return;
+    downloadDatasetFile(rawData, { fileName, resolution, peakSchedule });
+  }, [rawData, fileName, resolution, peakSchedule]);
+
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
+
+  // Bring a stored entry into the app: its readings, the schedule it was saved
+  // with, and the history row that later schedule edits are written back to.
+  const adoptHistoryEntry = useCallback((entry: FileHistoryEntry) => {
+    loadFromHistory(entry.data, entry.fileName, entry.resolution);
+    if (entry.peakSchedule) applyPeakSchedule(entry.peakSchedule);
+    trackHistoryEntry(entry.id, entry.peakSchedule);
+    setShowRecentFiles(false);
+  }, [loadFromHistory, applyPeakSchedule, trackHistoryEntry]);
 
   const handleLoadFromHistory = useCallback(async (id: number) => {
     const entry = await loadEntry(id);
-    if (entry) {
-      loadFromHistory(entry.data, entry.fileName, entry.resolution);
-      setShowRecentFiles(false);
-    }
-  }, [loadEntry, loadFromHistory]);
+    if (entry) adoptHistoryEntry(entry);
+  }, [loadEntry, adoptHistoryEntry]);
+
+  // Convert a stored file to the native .json: a compact, re-loadable copy of
+  // the readings carrying whatever peak schedule that entry holds. Loading it is
+  // the caller's choice — converting a file you are not switching to is a common
+  // enough case that it stays the default.
+  const handleDownloadFromHistory = useCallback(async (id: number, opts: { load: boolean }) => {
+    const entry = await loadEntry(id);
+    if (!entry) return;
+    downloadDatasetFile(entry.data, {
+      fileName: entry.fileName,
+      resolution: entry.resolution,
+      peakSchedule: entry.peakSchedule,
+    });
+    if (opts.load) adoptHistoryEntry(entry);
+  }, [loadEntry, adoptHistoryEntry]);
 
   // Load the selected history entries, merge them, and assemble a preview for
   // the modal to confirm. Returns null if fewer than two entries resolve.
@@ -424,6 +536,7 @@ export default function App() {
       flowDirection: e.flowDirection,
       commodity: e.commodity,
       intervalLength: e.intervalLength,
+      peakSchedule: e.peakSchedule,
     }));
     const result = mergeDatasets(sources);
     const warnings = detectMergeWarnings(sources);
@@ -454,23 +567,30 @@ export default function App() {
     name: string,
     actions: { load: boolean; download: boolean },
   ) => {
+    // Only what the merged sources themselves carried: the dataset that happens
+    // to be open at merge time has no say over the new one's rate periods.
+    const mergedSchedule = preview.peakSchedule ?? undefined;
     if (actions.load) {
       loadFromHistory(preview.data, name, preview.resolution);
-      saveEntry(name, preview.data, preview.resolution, {
+      const id = await saveEntry(name, preview.data, preview.resolution, {
         isMerged: true,
         sources: preview.sources,
         flowDirection: preview.flowDirection,
         commodity: preview.commodity,
+        peakSchedule: mergedSchedule,
       });
+      if (preview.peakSchedule) applyPeakSchedule(preview.peakSchedule);
+      trackHistoryEntry(id, mergedSchedule);
     }
     if (actions.download) {
       downloadNativeFile(preview.data, {
         fileName: name,
         resolution: preview.resolution,
         sources: preview.sources,
+        peakSchedule: mergedSchedule,
       });
     }
-  }, [loadFromHistory, saveEntry]);
+  }, [loadFromHistory, saveEntry, applyPeakSchedule, trackHistoryEntry]);
 
   return (
     <AnimatedBackground>
@@ -488,7 +608,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v3.1
+                    v4
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
@@ -506,7 +626,9 @@ export default function App() {
                     <span className="text-sm font-medium">{historyEntries.length}</span>
                   </button>
                 )}
-                <button onClick={reset} className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
+                {/* Dropping the dataset drops its schedule with it — the next
+                    one starts from whatever it carries, not from this one. */}
+                <button onClick={() => { reset(); applyPeakSchedule(null); trackHistoryEntry(null); }} className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
                   <Upload className="w-4 h-4" />
                   <span className="hidden sm:inline">Load</span>
                 </button>
@@ -611,6 +733,7 @@ export default function App() {
                               temperatureUnit={temperatureUnit}
                               fileName={fileName ?? undefined}
                               resolution={resolution}
+                              peakSchedule={peakSchedule}
                             />
                           </div>
                         )}
@@ -629,6 +752,11 @@ export default function App() {
                         temperatureUnit={temperatureUnit}
                         setTemperatureUnit={setTemperatureUnit}
                         weather={weather}
+                        peakSchedule={peakSchedule}
+                        setPeakSchedule={applyPeakSchedule}
+                        showPeakBands={showPeakBands}
+                        setShowPeakBands={setShowPeakBands}
+                        onSaveDataFile={rawData?.length ? handleSaveDataFile : undefined}
                       />
                     )}
                   </div>
@@ -637,7 +765,7 @@ export default function App() {
                     {activeTab === 'chart' && (
                       <>
                         <LoadingOverlay visible={isProcessing} variant="chart" size="md" message="Aggregating data..." subMessage={`Processing ${viewData.length.toLocaleString()} readings`} />
-                        <MainChart data={chartData} resolution={resolution} isProcessing={isProcessing} spansMultipleDays={spansMultipleDays} metricMode={metricMode} energyUnit={energyUnit} weatherData={weatherDataMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} />
+                        <MainChart data={chartData} resolution={resolution} isProcessing={isProcessing} spansMultipleDays={spansMultipleDays} metricMode={metricMode} energyUnit={energyUnit} weatherData={weatherDataMap} showWeather={weather.enabled} temperatureUnit={temperatureUnit} peakSchedule={peakSchedule} showPeakBands={showPeakBands} setResolution={setResolution} />
                       </>
                     )}
 
@@ -666,6 +794,8 @@ export default function App() {
                           weatherData={analysisWeatherMap}
                           showWeather={weather.enabled}
                           temperatureUnit={temperatureUnit}
+                          peakSchedule={peakSchedule}
+                          showPeakBands={showPeakBands}
                         />
                       </div>
                     )}
@@ -675,6 +805,12 @@ export default function App() {
                     )}
                   </div>
                 </div>
+
+                {peakSchedule && peakSchedule.periods.length > 0 && (
+                  <div className="rise-in" style={{ animationDelay: '420ms' }}>
+                    <PeakSplitCard data={viewData} schedule={peakSchedule} energyUnit={energyUnit} />
+                  </div>
+                )}
 
                 {/* Rate Changes Card */}
                 <div className="rise-in" style={{ animationDelay: '490ms' }}>
@@ -698,6 +834,7 @@ export default function App() {
             onLoad={handleLoadFromHistory}
             onUpload={handleFileUpload}
             onDelete={deleteEntry}
+            onDownload={handleDownloadFromHistory}
             onClose={() => setShowRecentFiles(false)}
             onMergePreview={handleMergePreview}
             onMergeConfirm={handleMergeConfirm}

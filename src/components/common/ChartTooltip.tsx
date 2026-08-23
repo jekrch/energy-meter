@@ -19,7 +19,12 @@ export interface TooltipData {
     isIncomplete?: boolean;
     isPartial?: boolean;
     noCompleteData?: boolean;
+    // The aggregation bucket's name ("months"/"days"/"hours") — unrelated to
+    // `peakPeriod` below, which is the TOU rate period the reading falls in.
     periodName?: string;
+    peakPeriod?: { name: string; color: string };
+    // Per-rate-period split of this bucket, for the stacked analysis bars.
+    peakBreakdown?: { name: string; color: string; text: string }[];
     showAggregatedNote?: boolean;
 }
 
@@ -99,6 +104,29 @@ export const ChartTooltip = React.memo(function ChartTooltip({
                             {formatTemp(data.temperature!, temperatureUnit)}
                             <span className="text-xs text-slate-500 font-normal ml-1">avg temp</span>
                         </p>
+                    )}
+
+                    {data.peakPeriod && (
+                        <p className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
+                            <span
+                                className="w-2 h-2 rounded-sm shrink-0"
+                                style={{ backgroundColor: data.peakPeriod.color }}
+                            />
+                            {data.peakPeriod.name}
+                        </p>
+                    )}
+
+                    {data.peakBreakdown && data.peakBreakdown.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-line flex flex-col gap-1">
+                            {data.peakBreakdown.map(({ name, color, text }) => (
+                                <p key={name} className="flex items-center gap-1.5 text-xs text-slate-400">
+                                    <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                                    <span className="truncate">{name}</span>
+                                    <span className="flex-1" />
+                                    <span className="font-mono slashed-zero tabular-nums text-slate-300">{text}</span>
+                                </p>
+                            ))}
+                        </div>
                     )}
 
                     {data.countLabel && (

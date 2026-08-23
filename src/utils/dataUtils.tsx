@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import type { BrushDataPoint } from '../components/common/RangeBrush';
-import { type DataPoint, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
+import { type DataPoint, type PeakSchedule, type RateChange, type RatePeriod, RESOLUTIONS } from '../types';
 import { formatShortDate, formatChartTime } from './formatters';
 import { toDemandKW } from './demandUnits';
 import { tryParseNativeJson } from './nativeFormat';
@@ -224,6 +224,8 @@ export interface ParsedBlock {
 
 export interface ParsedGreenButton {
   blocks: ParsedBlock[];
+  // Native format only — Green Button XML/CSV carry no rate-period metadata.
+  peakSchedule?: PeakSchedule;
 }
 
 interface ReadingTypeMeta {

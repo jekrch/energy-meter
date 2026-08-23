@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'bun:test';
 import { aggregateBuckets, finalizeBuckets } from './analysisAggregation';
 import { DAYS_OF_WEEK, MONTHS, HOURS } from '../types';
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
+import { buildPeakIndex } from '../utils/peakSchedule';
 import { formatChartTime } from '../utils/formatters';
 
 // 2024-01-01 00:00:00 UTC is a Monday. Tests construct timestamps from local
@@ -135,5 +136,84 @@ describe('finalizeBuckets', () => {
     expect(averages.length).toBe(24);
     expect(averages.every(a => a.average === 0 && a.count === 0)).toBe(true);
     expect(averages[5].label).toBe('5AM');
+  });
+});
+
+describe('per-rate-period split', () => {
+  // On-Peak 2p-5p on weekdays; everything else off-peak.
+  const schedule: PeakSchedule = {
+    version: 1,
+    periods: [{
+      id: 'p1', name: 'On-Peak', colorKey: 'red',
+      rules: [{ hourRanges: [{ start: 14, end: 16 }], daysOfWeek: [1, 2, 3, 4, 5], months: [] }],
+    }],
+    observeHolidays: false,
+    holidayRules: [],
+    extraHolidays: [],
+  };
+  const index = buildPeakIndex(schedule);
+
+  // Wed Jun 11 2025, one reading per hour.
+  const wednesday = Array.from({ length: 24 }, (_, h) => point(at(2025, 5, 11, h), 100, 1200));
+
+  it('is absent entirely when no schedule is supplied', () => {
+    const bucket = [...aggregateBuckets(wednesday, 'dayOfWeek').values()][0];
+    expect(bucket.periodValues).toBeUndefined();
+    expect(bucket.periodCosts).toBeUndefined();
+  });
+
+  it('divides a day bucket between the period and off-peak', () => {
+    const bucket = [...aggregateBuckets(wednesday, 'dayOfWeek', index).values()][0];
+    // Slot 0 = On-Peak (3 hours), slot 1 = off-peak (21 hours).
+    expect(bucket.periodValues).toEqual([300, 2100]);
+    expect(bucket.periodCosts).toEqual([3600, 25200]);
+  });
+
+  it('keeps the split summing to the bucket total, so a stack matches its bar', () => {
+    for (const groupBy of ['hour', 'dayOfWeek', 'month'] as const) {
+      for (const bucket of aggregateBuckets(wednesday, groupBy, index).values()) {
+        expect(bucket.periodValues!.reduce((a, b) => a + b, 0)).toBe(bucket.sum);
+        expect(bucket.periodCosts!.reduce((a, b) => a + b, 0)).toBe(bucket.costSum);
+      }
+    }
+  });
+
+  it('puts a whole weekend day in the off-peak slot', () => {
+    const saturday = Array.from({ length: 24 }, (_, h) => point(at(2025, 5, 14, h), 100, 1200));
+    const bucket = [...aggregateBuckets(saturday, 'dayOfWeek', index).values()][0];
+    expect(bucket.periodValues).toEqual([0, 2400]);
+  });
+
+  it('gives an hour-of-day bucket a single slot, since one hour has one period', () => {
+    const buckets = aggregateBuckets(wednesday, 'hour', index);
+    const at3pm = [...buckets.values()].find(b => b.categoryKey === 15)!;
+    const at9pm = [...buckets.values()].find(b => b.categoryKey === 21)!;
+    expect(at3pm.periodValues).toEqual([100, 0]);
+    expect(at9pm.periodValues).toEqual([0, 100]);
+  });
+
+  it('surfaces the split on the finalized timeline rows', () => {
+    const { timeline } = finalizeBuckets(
+      aggregateBuckets(wednesday, 'dayOfWeek', index), 7, DAYS_OF_WEEK, 2,
+    );
+    expect(timeline[0].periodValues).toEqual([300, 2100]);
+  });
+
+  it('averages the split over the same denominator as the total', () => {
+    // Two weekdays: the Wednesday plus the Thursday after it.
+    const thursday = Array.from({ length: 24 }, (_, h) => point(at(2025, 5, 12, h), 200, 2400));
+    const { averages } = finalizeBuckets(
+      aggregateBuckets([...wednesday, ...thursday], 'month', index), 12, MONTHS, 2,
+    );
+    const june = averages[5];
+    // One month bucket, so the average equals the total: 300 + 600 on-peak.
+    expect(june.periodAverages).toEqual([900, 6300]);
+    expect(june.periodAverages!.reduce((a, b) => a + b, 0)).toBe(june.average);
+  });
+
+  it('leaves the averages split undefined when no schedule is active', () => {
+    const { averages } = finalizeBuckets(aggregateBuckets(wednesday, 'hour'), 24, HOUR_LABELS);
+    expect(averages[15].periodAverages).toBeUndefined();
+    expect(averages[15].periodAvgCosts).toBeUndefined();
   });
 });

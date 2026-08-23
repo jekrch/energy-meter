@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { type DataPoint, type AnalysisFilters, DAYS_OF_WEEK, MONTHS, HOURS, isHourFilterActive, hourPassesRanges } from '../types';
 import { useDebouncedValue } from './useDebounceValue';
-import { accumulateBucket, finalizeBuckets } from './analysisAggregation';
+import { accumulateBucket, finalizeBuckets, peakSlotCount } from './analysisAggregation';
+import { buildPeakIndex, scheduleIsEmpty } from '../utils/peakSchedule';
+import type { PeakSchedule } from '../types';
 import { runChunked, scheduleIdleWork } from './chunkedRunner';
 import { formatChartTime } from '../utils/formatters';
 
@@ -12,6 +14,10 @@ export interface AnalysisAverageResult {
     avgCost: number;
     demand: number;  // average of each period's peak demand (kW)
     count: number;
+    // Per-rate-period split of `average` / `avgCost`, last slot = off-peak.
+    // Undefined when no peak schedule is active.
+    periodAverages?: number[];
+    periodAvgCosts?: number[];
 }
 
 export interface AnalysisTimelineResult {
@@ -24,6 +30,9 @@ export interface AnalysisTimelineResult {
     categoryKey: number;
     periodStart: number;
     periodEnd: number;
+    // Per-rate-period split of `value` / `cost`, last slot = off-peak.
+    periodValues?: number[];
+    periodCosts?: number[];
 }
 
 export interface AnalysisResults {
@@ -43,6 +52,8 @@ export interface TimelineBucket {
     categoryKey: number;
     periodStart: number;
     periodEnd: number;
+    periodValues?: number[];
+    periodCosts?: number[];
 }
 
 // Device-aware configuration
@@ -100,7 +111,12 @@ const EMPTY_RESULTS: AnalysisResults = Object.freeze({
 export function useAnalysis(
     activeTab: string,
     selectionData: DataPoint[],
-    groupBy: 'dayOfWeek' | 'month' | 'hour'
+    groupBy: 'dayOfWeek' | 'month' | 'hour',
+    // When set, every bucket also carries its per-rate-period split so the
+    // analysis bars can be stacked by period instead of drawn as one total.
+    // Deliberately required, with no default: an omitted argument once compiled
+    // silently and left every stacked segment reading zero.
+    peakSchedule: PeakSchedule | null,
 ) {
     const [filters, setFilters] = useState<AnalysisFilters>({
         daysOfWeek: [],
@@ -132,6 +148,12 @@ export function useAnalysis(
     }, [debouncedGroupBy]);
 
     const groupCount = debouncedGroupBy === 'month' ? 12 : debouncedGroupBy === 'dayOfWeek' ? 7 : 24;
+
+    const peakIndex = useMemo(
+        () => (peakSchedule && !scheduleIsEmpty(peakSchedule) ? buildPeakIndex(peakSchedule) : null),
+        [peakSchedule],
+    );
+    const periodSlots = peakSlotCount(peakIndex);
 
     // Sample data if too large for device
     const workingData = useMemo(() => {
@@ -194,7 +216,7 @@ export function useAnalysis(
             if (currentProcess !== processRef.current) return;
 
             try {
-                const { averages, timeline } = finalizeBuckets(timelineMap, groupCount, labels);
+                const { averages, timeline } = finalizeBuckets(timelineMap, groupCount, labels, periodSlots);
 
                 if (currentProcess === processRef.current) {
                     setResults({ filtered: filteredData, averages, timeline });
@@ -220,7 +242,7 @@ export function useAnalysis(
                 data: filteredData,
                 chunkSize: DEVICE_CONFIG.chunkSize,
                 schedule: scheduleIdleWork,
-                processItem: (point) => accumulateBucket(timelineMap, point, debouncedGroupBy),
+                processItem: (point) => accumulateBucket(timelineMap, point, debouncedGroupBy, peakIndex),
                 onDone: () => finalizeResults(filteredData, timelineMap),
                 isCancelled: isStale,
                 onError: failWith('aggregation chunk'),
@@ -270,7 +292,9 @@ export function useAnalysis(
         debouncedHourRanges,
         debouncedGroupBy,
         labels,
-        groupCount
+        groupCount,
+        peakIndex,
+        periodSlots
     ]);
 
     const stableSetFilters = useCallback((

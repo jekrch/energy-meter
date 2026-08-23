@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
 import type { MergeSourceMeta } from '../utils/mergeData';
 
 // Schema-v2 provenance fields. All optional so v1 rows (which predate them)
@@ -10,6 +10,7 @@ export interface FileHistoryProvenance {
   intervalLength?: number;       // seconds per reading
   isMerged?: boolean;            // produced by the merge feature — badge it
   sources?: MergeSourceMeta[];   // provenance of a merged entry
+  peakSchedule?: PeakSchedule;   // schema v3 — the TOU schedule in force for this file
 }
 
 export interface FileHistoryEntry extends FileHistoryProvenance {
@@ -28,9 +29,10 @@ export type FileHistoryMeta = Omit<FileHistoryEntry, 'data'>;
 const DB_NAME = 'energy-meter';
 const STORE_NAME = 'file-history';
 // v2: added optional provenance fields (flowDirection/commodity/intervalLength/
-// isMerged/sources). The upgrade is a no-op — new fields default to undefined on
-// existing rows — but the version bump lets the browser run onupgradeneeded.
-const DB_VERSION = 2;
+// isMerged/sources). v3: added peakSchedule. Both upgrades are no-ops — new
+// fields default to undefined on existing rows — but the version bump lets the
+// browser run onupgradeneeded.
+const DB_VERSION = 3;
 const MAX_ENTRIES = 5;
 
 // Drop undefined-valued keys so optional provenance never bloats stored rows.
@@ -79,13 +81,16 @@ export function useFileHistory() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Resolves with the new entry's id so the caller can keep editing it — the
+  // peak schedule a user defines *after* the load is written back through
+  // `updateEntry`. Null when the write did not happen.
   const saveEntry = useCallback(async (
     fileName: string,
     data: DataPoint[],
     resolution: string,
     provenance?: FileHistoryProvenance,
-  ) => {
-    if (!data.length) return;
+  ): Promise<number | null> => {
+    if (!data.length) return null;
     try {
       const db = await openDB();
       const entry: Omit<FileHistoryEntry, 'id'> = {
@@ -98,10 +103,12 @@ export function useFileHistory() {
         ...stripUndefined(provenance),
         data,
       };
-      await new Promise<void>((resolve, reject) => {
+      const id = await new Promise<number | null>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
-        store.add(entry);
+        const addReq = store.add(entry);
+        let newId: number | null = null;
+        addReq.onsuccess = () => { newId = addReq.result as number; };
         // After add, getAll will include the new record (same transaction = consistent view)
         const getAllReq = store.getAll();
         getAllReq.onsuccess = () => {
@@ -112,6 +119,38 @@ export function useFileHistory() {
               store.delete(sorted[i].id);
             }
           }
+        };
+        tx.oncomplete = () => resolve(newId);
+        tx.onerror = () => reject(tx.error);
+      });
+      await refresh();
+      return id;
+    } catch {
+      // IndexedDB unavailable
+      return null;
+    }
+  }, [refresh]);
+
+  // Patch the provenance of a stored entry in place, leaving its readings
+  // untouched. An explicitly `undefined` value clears the field — that is how a
+  // cleared peak schedule is removed rather than left behind at its old value.
+  const updateEntry = useCallback(async (id: number, patch: FileHistoryProvenance) => {
+    try {
+      const db = await openDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(id);
+        req.onsuccess = () => {
+          const existing: FileHistoryEntry | undefined = req.result;
+          // The entry may have aged out of MAX_ENTRIES since it was loaded.
+          if (!existing) return;
+          const next = { ...existing };
+          for (const [key, value] of Object.entries(patch)) {
+            if (value === undefined) delete next[key as keyof FileHistoryEntry];
+            else (next as Record<string, unknown>)[key] = value;
+          }
+          store.put(next);
         };
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
@@ -151,5 +190,5 @@ export function useFileHistory() {
     }
   }, [refresh]);
 
-  return { entries, saveEntry, loadEntry, deleteEntry };
+  return { entries, saveEntry, updateEntry, loadEntry, deleteEntry };
 }

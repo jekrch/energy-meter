@@ -191,6 +191,48 @@ describe('buildRawRow', () => {
     );
     expect(withoutTemp).not.toHaveProperty('temperature_c');
   });
+
+  it('names the peak period when a lookup is provided, and falls back to Off-Peak', () => {
+    const inPeak = buildRawRow(
+      point,
+      new Set(['peakPeriod']),
+      'Wh',
+      'C',
+      null,
+      identity,
+      timeFmt,
+      DOLLAR_PER_KWH,
+      () => 'On-Peak',
+    );
+    expect(inPeak.peak_period).toBe('On-Peak');
+
+    const offPeak = buildRawRow(
+      point,
+      new Set(['peakPeriod']),
+      'Wh',
+      'C',
+      null,
+      identity,
+      timeFmt,
+      DOLLAR_PER_KWH,
+      () => null,
+    );
+    expect(offPeak.peak_period).toBe('Off-Peak');
+  });
+
+  it('omits the peak period column when there is no schedule to look it up in', () => {
+    const row = buildRawRow(
+      point,
+      new Set(['peakPeriod']),
+      'Wh',
+      'C',
+      null,
+      identity,
+      timeFmt,
+      DOLLAR_PER_KWH,
+    );
+    expect(row).not.toHaveProperty('peak_period');
+  });
 });
 
 describe('buildAggRow', () => {

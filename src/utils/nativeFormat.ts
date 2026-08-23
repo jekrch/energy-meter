@@ -1,5 +1,6 @@
-import type { DataPoint } from '../types';
+import type { DataPoint, PeakSchedule } from '../types';
 import type { IntervalBlockMeta, ParsedGreenButton } from './dataUtils';
+import { sanitizePeakSchedule } from './peakSchedule';
 
 // Native, lossless file format for the merge feature.
 //
@@ -13,7 +14,11 @@ import type { IntervalBlockMeta, ParsedGreenButton } from './dataUtils';
 // (a year of 15-minute readings is ~35k points).
 
 export const NATIVE_FORMAT = 'energy-meter';
-export const NATIVE_VERSION = 1;
+// v2 adds the optional `peakSchedule` field. Both directions stay compatible:
+// `tryParseNativeJson` validates only `format` and `data` and never reads
+// `version`, so an older build reads a v2 file and simply drops the schedule,
+// and a new build reads a v1 file with `peakSchedule === undefined`.
+export const NATIVE_VERSION = 2;
 
 export interface NativeSourceMeta {
   fileName: string;
@@ -36,6 +41,7 @@ interface NativeFile {
   createdAt: number;   // epoch ms
   resolution: string;
   sources: NativeSourceMeta[];
+  peakSchedule?: PeakSchedule;
   data: NativeRow[];
 }
 
@@ -43,6 +49,7 @@ export interface SerializeNativeOptions {
   fileName: string;
   resolution: string;
   sources: NativeSourceMeta[];
+  peakSchedule?: PeakSchedule | null;
 }
 
 export function serializeNativeFile(data: DataPoint[], opts: SerializeNativeOptions): string {
@@ -53,6 +60,7 @@ export function serializeNativeFile(data: DataPoint[], opts: SerializeNativeOpti
     createdAt: Date.now(),
     resolution: opts.resolution,
     sources: opts.sources,
+    ...(opts.peakSchedule ? { peakSchedule: opts.peakSchedule } : {}),
     data: data.map((d) => {
       const row: NativeRow = { t: d.timestamp, v: d.value, c: d.cost };
       if (d.duration != null) row.d = d.duration;
@@ -114,7 +122,11 @@ export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
     isCumulative: false,
   };
 
-  return { blocks: [{ meta, data }] };
+  // A schedule written by a newer build (or hand-edited) is validated rather
+  // than trusted; an unusable one is dropped, never fatal to the data load.
+  const peakSchedule = sanitizePeakSchedule(obj.peakSchedule);
+
+  return { blocks: [{ meta, data }], ...(peakSchedule ? { peakSchedule } : {}) };
 }
 
 // Sanitize a user-supplied merge name into a safe filename fragment.
@@ -125,6 +137,43 @@ export function sanitizeFilename(name: string): string {
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
   return cleaned || 'dataset';
+}
+
+// A dataset that is open in the app is its own single source, spanning exactly
+// the readings it holds. Both single-file save paths — the export panel and the
+// peak editor — describe it the same way, so the meta and the download name are
+// derived here rather than rebuilt at each call site. (The merge flow passes its
+// own multi-source meta and name straight to `downloadNativeFile`.)
+export interface DatasetFileOptions {
+  fileName?: string | null;
+  resolution: string;
+  peakSchedule?: PeakSchedule | null;
+}
+
+export function datasetNativeOptions(
+  data: readonly DataPoint[],
+  opts: DatasetFileOptions,
+): SerializeNativeOptions {
+  const name = opts.fileName?.replace(/\.[^.]+$/, '') || 'energy-data';
+  return {
+    fileName: name,
+    resolution: opts.resolution,
+    sources: [{
+      fileName: name,
+      startDate: data[0]?.timestamp ?? 0,
+      endDate: data[data.length - 1]?.timestamp ?? 0,
+      recordCount: data.length,
+    }],
+    peakSchedule: opts.peakSchedule,
+  };
+}
+
+// Save the loaded dataset — readings plus whatever peak schedule is in force —
+// as a re-loadable native .json. No-ops on an empty dataset.
+export function downloadDatasetFile(data: DataPoint[], opts: DatasetFileOptions): void {
+  if (!data.length) return;
+  const nativeOpts = datasetNativeOptions(data, opts);
+  downloadNativeFile(data, nativeOpts, `energy-${sanitizeFilename(nativeOpts.fileName)}.json`);
 }
 
 // Build the native JSON and trigger a browser download (mirrors the blob /

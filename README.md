@@ -33,6 +33,7 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 - **Cost Tracking**: Toggle between energy usage and cost metrics with automatic rate calculations
 - **Rate Changes**: Automatically detect rate changes from the cost/usage ratio over the selected range, with a rate-over-time chart, per-period rate breakdown, and hints for time-of-use or seasonal pricing
+- **Peak Rate Periods**: Enter your utility's time-of-use schedule (multiple tiers, weekday scoping, seasonal hours, and observed holidays) and see it as shaded bands behind the chart. Analysis bars split by rate period, and a summary card totals energy, cost, share of usage, and the highest demand (kW) interval for each period. Schedules can be exported as JSON to reload or share
 - **Weather Overlay**: Optionally overlay historical temperature data from Open-Meteo to correlate energy usage with weather patterns, with temperature range filtering to analyze consumption at specific temperatures
 
 ### Display & Storage
