@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com https://analytics.jacobkrch.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://archive-api.open-meteo.com https://geocoding-api.open-meteo.com https://analytics.jacobkrch.com; img-src 'self' data: blob: https://*.googleusercontent.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; frame-src https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Drive sync is opt-in, so these only warm the handshake for users who
+         reach for it; neither host is contacted until sign-in. -->
+    <link rel="preconnect" href="https://accounts.google.com" />
+    <link rel="preconnect" href="https://www.googleapis.com" crossorigin />
     
     <!-- Primary Meta Tags -->
     <title>GB Energy Meter — Visualize Green Button Energy Data</title>
@@ -28,7 +34,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://gbmeter.com/" />
     <meta property="og:title" content="GB Energy Meter — Visualize Green Button Energy Data" />
-    <meta property="og:description" content="Free tool to analyze your home energy consumption. Interactive charts, cost tracking, and weather correlation—all processed locally in your browser." />
+    <meta property="og:description" content="Free tool to analyze your home energy consumption. Interactive charts, cost tracking, and weather correlation, all processed locally in your browser." />
     <meta property="og:image" content="https://gbmeter.com/og-image.png" />
     <meta property="og:site_name" content="GB Energy Meter" />
     
@@ -36,7 +42,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://gbmeter.com/" />
     <meta name="twitter:title" content="GB Energy Meter — Visualize Green Button Energy Data" />
-    <meta name="twitter:description" content="Free tool to analyze your home energy consumption. Interactive charts, cost tracking, and weather correlation—all processed locally in your browser." />
+    <meta name="twitter:description" content="Free tool to analyze your home energy consumption. Interactive charts, cost tracking, and weather correlation, all processed locally in your browser." />
     <meta name="twitter:image" content="https://gbmeter.com/og-image.png" />
     
     <!-- Favicon -->
@@ -68,10 +74,18 @@
     }
     </script>
     
-    <!-- Analytics -->
-    <script defer src="https://analytics.jacobkrch.com/script.js" data-website-id="1dd27276-2300-4ae2-8ba6-ecfab4ee4a38"></script>
-    <script type="module" crossorigin src="/assets/index-B53jpl5z.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-7wkMptOo.css">
+    <!-- Analytics. Pinned with SRI: this is third-party code running on a page
+         that holds a Google Drive token, so the browser refuses it unless the
+         bytes are the ones reviewed here. Blocked analytics is harmless — the
+         app never depends on it. Refresh the hash after upgrading Umami:
+           curl -s https://analytics.jacobkrch.com/script.js | openssl dgst -sha384 -binary | openssl base64 -A
+         The Content-Security-Policy is injected at build time; see vite.config.ts. -->
+    <script defer src="https://analytics.jacobkrch.com/script.js"
+      integrity="sha384-6PHtXKae10+dZuA/fcmjkSTDco+NPBE5fZ4eS/Em2lVIsS6FdDZIgs06MBJLEcSW"
+      crossorigin="anonymous"
+      data-website-id="1dd27276-2300-4ae2-8ba6-ecfab4ee4a38"></script>
+    <script type="module" crossorigin src="/assets/index-D49AGY39.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BMp7Hlr_.css">
   </head>
   <body>
     <div id="root"></div>

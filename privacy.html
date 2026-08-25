@@ -106,6 +106,8 @@
           </thead>
           <tbody>
             <tr><td><code>energy-meter</code> &rarr; <code>file-history</code> (IndexedDB)</td><td>Your most recent imported datasets: meter readings, the original file name, and details such as date range, resolution, and commodity type</td></tr>
+            <tr><td><code>energy-meter</code> &rarr; <code>drive-cache</code> (IndexedDB)</td><td>A copy of each Google Drive dataset you have opened, so reopening it does not download it again. Only present if you use Drive sync</td></tr>
+            <tr><td><code>energy-meter:gauth</code> (sessionStorage)</td><td>Your Google access token and the account label shown in the header, for the current tab only. Only present if you use Drive sync</td></tr>
             <tr><td><code>gb-energy-weather</code> &rarr; <code>weather-cache</code> (IndexedDB)</td><td>Cached historical temperature readings for the location you entered</td></tr>
             <tr><td><code>gb-weather-location</code> (localStorage)</td><td>The ZIP or place name you entered for weather, and its coordinates</td></tr>
             <tr><td><code>peakBandsVisible</code> (localStorage)</td><td>A display preference</td></tr>
@@ -125,7 +127,7 @@
       <p>This is the narrowest Drive permission Google offers. It grants access only to files this app creates. The rest of your Drive stays invisible to the app and cannot be listed, read, modified, or deleted. No broader permission is requested at any point.</p>
 
       <h3>What is stored, and where</h3>
-      <p>Datasets you choose to save are written as files in a folder named GB Energy Meter in your own Drive, under your own Google account. They are ordinary, visible files. You can open, download, or delete them yourself at any time from Drive, with or without this app. Deleting them in Drive removes them completely, since this app keeps no copy on any server.</p>
+      <p>Datasets are written as files in a folder named GB Energy Meter in your own Drive, under your own Google account. While you are signed in, a file you open in the app is saved to that folder automatically, since storing your datasets there is the purpose of connecting an account; if you are not signed in, nothing is sent to Google and imports stay in your browser. They are ordinary, visible files. You can open, download, or delete them yourself at any time from Drive, with or without this app. Deleting them in Drive removes them completely, since this app keeps no copy on any server.</p>
 
       <h3>Your Google account details</h3>
       <p>After you sign in, your account's display name, email address, and profile picture are read once so the app can show which account is connected. This is only used for that on-screen label. It is held in your browser's session storage for the current browsing session and is discarded when you sign out or close the tab.</p>
