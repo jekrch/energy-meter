@@ -581,7 +581,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                     {!peakStack && metricMode === 'demand' && (
                         <span className="text-slate-500 italic">
                             Peak demand is a maximum, not a total, so bars can't be stacked by rate
-                            period — the Peak Rate Split card has the highest demand in each
+                            period. The Peak Rate Split card has the highest demand in each
                         </span>
                     )}
                 </div>
@@ -625,7 +625,7 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             <span className="text-slate-600">
                                 {filteredTimeline.length.toLocaleString()} {groupBy === 'month' ? 'months' : groupBy === 'dayOfWeek' ? 'days' : 'hours'}
                                 {isTimelineCapped && (
-                                    <span className="text-amber-500/70" title={`Charting ${chartData.length.toLocaleString()} of ${filteredTimeline.length.toLocaleString()} periods — more bars than pixels`}> · sampled</span>
+                                    <span className="text-amber-500/70" title={`Charting ${chartData.length.toLocaleString()} of ${filteredTimeline.length.toLocaleString()} periods: more bars than pixels`}> · sampled</span>
                                 )}
                                 {incompletePeriods > 0 && <span className="text-amber-500/70"> · {incompletePeriods} partial</span>}
                             </span>

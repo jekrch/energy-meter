@@ -451,7 +451,7 @@ function PeriodEditor({ period, index, total, onChange, onMove, onRemove }: {
                         <button
                             key={key}
                             type="button"
-                            title={`${key} — use this color`}
+                            title={`Use ${key}`}
                             aria-label={`${key} color`}
                             aria-pressed={period.colorKey === key}
                             onClick={() => onChange({ ...period, colorKey: key })}
@@ -507,7 +507,7 @@ function PeriodEditor({ period, index, total, onChange, onMove, onRemove }: {
                     Add rule
                 </button>
                 <p className="text-[11px] text-slate-500 leading-snug">
-                    Rules are OR'd — add one for a season with different hours.
+                    Rules are OR'd. Add one for a season with different hours.
                 </p>
             </div>
         </div>
@@ -596,7 +596,7 @@ function SchedulePreview({ schedule }: { schedule: PeakSchedule }) {
                 {schedule.periods.map((period, i) => (
                     <div
                         key={period.id}
-                        title={`${period.name} — ${pct(shares.counts[i])}`}
+                        title={`${period.name}: ${pct(shares.counts[i])}`}
                         style={{
                             width: `${(shares.counts[i] / HOURS_IN_WEEK) * 100}%`,
                             backgroundColor: PEAK_COLORS[period.colorKey],
@@ -630,8 +630,8 @@ function SchedulePreview({ schedule }: { schedule: PeakSchedule }) {
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-                Observed holidays are off-peak and are not shown in this grid. Hours use your
-                browser's timezone, which is only the meter's timezone if you are in it.
+                Holidays are off-peak and aren't shown in this grid. Hours use your browser's
+                timezone, not the meter's.
             </p>
         </div>
     );
@@ -756,9 +756,8 @@ function TemplatePicker({ onPick, onBlank }: {
         // this picker leads into, which is far wider than these cards need.
         <div className="flex flex-col gap-3 w-full max-w-lg mx-auto">
             <p className="text-xs text-slate-500 leading-relaxed">
-                Green Button files carry no rate-period metadata, so the schedule is yours to
-                describe. It shades the chart as a visual reference — it does not recompute
-                your bill.
+                Green Button files don't include rate periods, so you have to describe them
+                here. This only shades the chart. It doesn't recalculate your bill.
             </p>
 
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
@@ -926,7 +925,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
             {importOpen && (
                 <div className="px-4 py-3 border-b border-line bg-surface-2 flex flex-col gap-2 shrink-0">
                     <span className="text-xs text-slate-400">
-                        Paste a schedule someone shared, or the contents of an exported data file.
+                        Paste a shared schedule, or the contents of an exported data file.
                     </span>
                     <textarea
                         value={importText}
@@ -976,7 +975,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                                 <input
                                     value={schedule?.label ?? ''}
                                     onChange={e => update({ label: e.target.value })}
-                                    placeholder="e.g. “ComEd C&I — Rate 6”"
+                                    placeholder="e.g. “ComEd Rate 6”"
                                     className="bg-sunken border border-line rounded-lg px-2.5 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/40 transition-colors"
                                 />
                             </label>
@@ -984,7 +983,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                             {periods.length > 1 && (
                                 <p className="flex items-start gap-2 text-[11px] text-slate-500 leading-relaxed">
                                     <ListOrdered className="w-3.5 h-3.5 shrink-0 mt-px" />
-                                    Checked top-down, first match wins — keep the narrowest tier (a
+                                    Checked top-down, first match wins. Put the narrowest tier (a
                                     critical peak) above the broader one it sits inside.
                                 </p>
                             )}
@@ -1043,7 +1042,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                         <button
                             type="button"
                             onClick={handleCopy}
-                            title="Copy this schedule as JSON to share it"
+                            title="Copy this schedule as JSON"
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
                         >
                             {copied ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
@@ -1054,7 +1053,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                         <button
                             type="button"
                             onClick={handleSave}
-                            title="Download this dataset as a .json file with the schedule saved inside it"
+                            title="Download this dataset as .json with the schedule saved inside"
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
                         >
                             {saved ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" /> : <Download className="w-3.5 h-3.5 shrink-0" />}
@@ -1073,7 +1072,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                                     : 'text-slate-500 hover:text-red-400'
                             }`}
                         >
-                            {confirmClear ? 'Clear — are you sure?' : 'Clear schedule'}
+                            {confirmClear ? 'Clear it?' : 'Clear schedule'}
                         </button>
                     )}
                     <button

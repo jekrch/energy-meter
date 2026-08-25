@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Env files. Nothing secret belongs in a VITE_ variable — Vite bakes them
+# into the bundle — but an untracked .env should stay untracked.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

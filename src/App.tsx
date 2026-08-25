@@ -3,9 +3,9 @@ import { Zap, Plug, FileText, BarChart2, TrendingUp, Activity, AlertCircle, Doll
 import { ExportModal } from './components/export/ExportModal';
 
 // Types and Utilities
-import { type TimeRange, type MetricMode, type PeakSchedule } from './types';
+import { type TimeRange, type MetricMode, type PeakSchedule, type DataPoint } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
-import { createBrushData, type IntervalBlockMeta } from './utils/dataUtils';
+import { createBrushData, type IntervalBlockMeta, type ParsedBlock } from './utils/dataUtils';
 import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergePreview, type MergeSource } from './utils/mergeData';
 import { downloadDatasetFile, downloadNativeFile } from './utils/nativeFormat';
 import { type EnergyUnit, formatEnergyValue, suggestUnit } from './utils/energyUnits';
@@ -16,9 +16,14 @@ import { ROWS_PER_PAGE, BRUSH_POINTS, RATE_TOLERANCE_PERCENT, BLOCK_DAILY_THRESH
 // Hooks
 import { useAnalysis } from './hooks/useAnalysis';
 import { useWeather } from './hooks/useWeather';
-import { useEnergyData } from './hooks/useEnergyData';
+import { useEnergyData, type IncomingFile } from './hooks/useEnergyData';
 import { useChartProcessing } from './hooks/useChartProcessing';
-import { useFileHistory, type FileHistoryEntry } from './hooks/useFileHistory';
+import { useDatasetLibrary } from './hooks/useDatasetLibrary';
+import { useGoogleAuth } from './hooks/useGoogleAuth';
+import { setReturnStateProvider } from './data/googleAuth';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { keyKind, type DatasetKey, type DatasetProvenance, type DatasetRecord } from './data/datasetStore';
+import { driveStore } from './data/driveStore';
 import { usePersistentState } from './hooks/usePersistentState';
 import { sanitizePeakSchedule } from './utils/peakSchedule';
 import { DEMO_PEAK_SCHEDULE } from './utils/demoPeakSchedule';
@@ -41,6 +46,13 @@ import type { BrushDataPoint } from './components/common/RangeBrush';
 import { AnimatedBackground } from './components/common/AnimatedBackground';
 import { BlockPickerModal } from './components/common/BlockPickerModal';
 import { RecentFilesModal } from './components/common/RecentFilesModal';
+import { IncomingFileModal } from './components/common/IncomingFileModal';
+import type { MergeActions, MergeDestination, MergeDestinationOption } from './components/common/MergeSheet';
+import { GoogleAccountButton } from './components/common/GoogleAccountButton';
+
+// Trailing delay on peak-schedule writes bound for Drive. The rate editor emits
+// a change per keystroke and each Drive write re-uploads the whole dataset.
+const DRIVE_SCHEDULE_DEBOUNCE_MS = 2000;
 
 export default function App() {
   // UI State
@@ -51,9 +63,17 @@ export default function App() {
   const [metricMode, setMetricMode] = useState<MetricMode>('cost');
   const [temperatureUnit, setTemperatureUnit] = useState<'C' | 'F'>('F');
 
-  // File history (IndexedDB)
-  const { entries: historyEntries, saveEntry, updateEntry, loadEntry, deleteEntry } = useFileHistory();
+  // Saved datasets — this browser's history, plus the user's Drive once they
+  // sign in. Every id below is a store-qualified DatasetKey.
+  const auth = useGoogleAuth();
+  const online = useOnlineStatus();
+  const driveReady = auth.ready && online;
+  const extraStores = useMemo(() => (driveReady ? [driveStore] : []), [driveReady]);
+  const library = useDatasetLibrary(extraStores);
+  const { entries: historyEntries, patchProvenance } = library;
   const [showRecentFiles, setShowRecentFiles] = useState(false);
+
+  const openLibrary = useCallback(() => setShowRecentFiles(true), []);
 
   // Peak rate schedule. It belongs to the dataset, not to the browser: Green
   // Button data carries no rate metadata, so a schedule is only ever what the
@@ -72,18 +92,66 @@ export default function App() {
   // alone would still read null there.
   const peakScheduleRef = useRef<PeakSchedule | null>(null);
 
-  // Which history entry the open dataset came from — the row that schedule edits
-  // are written back to. Set when an entry is saved or loaded, cleared whenever a
-  // different dataset starts loading. `persistedSchedule` is the schedule that
-  // row already holds, serialized, so adopting an entry's own schedule on load
-  // does not immediately write it back.
-  const historyEntryIdRef = useRef<number | null>(null);
+  // Which saved dataset the open one came from — the entry that schedule edits
+  // are written back to, in whichever store it lives. Set when a dataset is
+  // saved or loaded, cleared whenever a different one starts loading.
+  // `persistedSchedule` is the schedule that entry already holds, serialized, so
+  // adopting an entry's own schedule on load does not immediately write it back.
+  const datasetKeyRef = useRef<DatasetKey | null>(null);
   const persistedScheduleRef = useRef<string | null>(null);
+  // The same value as state, because the toolbar's "Append to Drive" action has
+  // to appear the moment a dataset is tracked — a ref read during render would
+  // not re-render to show it.
+  const [datasetKey, setDatasetKey] = useState<DatasetKey | null>(null);
 
-  const trackHistoryEntry = useCallback((id: number | null, schedule?: PeakSchedule | null) => {
-    historyEntryIdRef.current = id;
+  // Whether a picked file should be held for the add-or-replace prompt. Refs
+  // because the upload pipeline is built above the state it depends on, and
+  // both are only ever read at the moment a file is chosen. `holdNext` is set
+  // by the explicit add actions, which know their target even when nothing is
+  // open, and cleared by the ordinary pick — so a cancelled file dialog cannot
+  // leave the next upload pointed at a dataset the user has moved on from.
+  const canMergeRef = useRef(false);
+  const holdNextUploadRef = useRef(false);
+
+  const trackHistoryEntry = useCallback((key: DatasetKey | null, schedule?: PeakSchedule | null) => {
+    datasetKeyRef.current = key;
+    setDatasetKey(key);
     persistedScheduleRef.current = JSON.stringify(schedule ?? null);
   }, []);
+
+  // Sign-in on a touch device navigates the whole tab out to Google, and the
+  // open dataset lives in memory — so the key is handed to auth on the way out
+  // and reloaded below on the way back. Registered once; the ref is read at the
+  // moment of the redirect, not now.
+  useEffect(() => {
+    setReturnStateProvider(() => datasetKeyRef.current);
+    return () => setReturnStateProvider(null);
+  }, []);
+
+  // A schedule edit bound for Drive, waiting out the debounce window.
+  const pendingScheduleRef = useRef<{ key: DatasetKey; patch: DatasetProvenance } | null>(null);
+  const scheduleTimerRef = useRef<number | null>(null);
+
+  const flushScheduleWrite = useCallback(() => {
+    if (scheduleTimerRef.current !== null) {
+      window.clearTimeout(scheduleTimerRef.current);
+      scheduleTimerRef.current = null;
+    }
+    const pending = pendingScheduleRef.current;
+    if (!pending) return;
+    pendingScheduleRef.current = null;
+    void patchProvenance(pending.key, pending.patch);
+  }, [patchProvenance]);
+
+  // Closing the rate editor or leaving the page must not drop an edit that is
+  // still inside the debounce window.
+  useEffect(() => {
+    window.addEventListener('beforeunload', flushScheduleWrite);
+    return () => {
+      window.removeEventListener('beforeunload', flushScheduleWrite);
+      flushScheduleWrite();
+    };
+  }, [flushScheduleWrite]);
 
   const applyPeakSchedule = useCallback((next: PeakSchedule | null) => {
     peakScheduleRef.current = sanitizePeakSchedule(next);
@@ -102,14 +170,26 @@ export default function App() {
     pendingBlocks,
     dataBounds,
     loadId,
+    incoming,
+    dismissIncoming,
+    adoptIncoming,
     handleFileUpload,
     handleSelectBlock,
     handleCancelBlockPicker,
     loadSampleData,
     loadFromHistory,
+    renameLoaded,
     reset,
   } = useEnergyData({
     setResolution,
+    // A picked file only raises the add-or-replace question when there is a
+    // saved dataset to add it to. With nothing open, or with the demo (which
+    // has no history row), it just loads. An "add to this dataset" action names
+    // its own target and arms the one-shot flag instead.
+    shouldHoldUpload: useCallback(
+      () => holdNextUploadRef.current || canMergeRef.current,
+      [],
+    ),
     onLoadStart: (source) => {
       setPage(1);
       // Clean slate for the incoming dataset: whatever schedule the last one had
@@ -121,20 +201,49 @@ export default function App() {
       // below name one a moment later.
       trackHistoryEntry(null);
     },
-    onDataLoaded: useCallback(async (name: string, data: Parameters<typeof saveEntry>[1], res: string, meta?: IntervalBlockMeta) => {
+    onDataLoaded: useCallback(async (name: string, data: DataPoint[], res: string, meta?: IntervalBlockMeta) => {
       const schedule = peakScheduleRef.current ?? undefined;
-      const id = await saveEntry(name, data, res, {
+      const provenance: DatasetProvenance = {
         flowDirection: meta?.flowDirection,
         commodity: meta?.commodity,
         intervalLength: meta?.intervalLength,
         // Whatever schedule is in force when the file loads, so reopening the
-        // entry from Recent Files brings its rate periods back with it.
+        // entry brings its rate periods back with it.
         peakSchedule: schedule,
-      });
-      trackHistoryEntry(id, schedule);
-    }, [saveEntry, trackHistoryEntry]),
+      };
+      // Signing in is the answer to "where do my datasets live": Drive, not the
+      // browser's five-slot recency cache. An import goes straight there rather
+      // than landing locally and waiting to be moved. Local is the fallback —
+      // signed out, or a Drive write that failed — so a failed upload still
+      // leaves the file somewhere it can be reopened from.
+      const saved =
+        (driveReady ? await library.save('drive', name, data, res, provenance).catch(() => null) : null)
+        ?? await library.save('local', name, data, res, provenance);
+      trackHistoryEntry(saved?.key ?? null, schedule);
+    }, [library, driveReady, trackHistoryEntry]),
     onPeakScheduleLoaded: applyPeakSchedule,
   });
+
+  // The saved dataset the open one came from, when there is one.
+  const openEntry = useMemo(
+    () => historyEntries.find((e) => e.key === datasetKey) ?? null,
+    [historyEntries, datasetKey],
+  );
+
+  // The dataset a held file is being added to. Null means "the one that's
+  // open" — set to a key by the per-row action in the library, which can name a
+  // dataset that isn't loaded at all.
+  const [mergeTargetKey, setMergeTargetKey] = useState<DatasetKey | null>(null);
+  const mergeTarget = useMemo(
+    () => (mergeTargetKey ? historyEntries.find((e) => e.key === mergeTargetKey) ?? null : openEntry),
+    [mergeTargetKey, historyEntries, openEntry],
+  );
+  // Read only when a file is picked, which is always after a commit. Gated on
+  // the entry being listed, not just tracked: without a row to write back to
+  // there is nothing to add a file to.
+  useEffect(() => {
+    canMergeRef.current = rawData !== null && openEntry !== null;
+  }, [rawData, openEntry]);
 
   // Time State
   const [viewRange, setViewRange] = useState<TimeRange>({ start: null, end: null });
@@ -474,13 +583,25 @@ export default function App() {
   // when the schedule already matches what that row holds, which is the case
   // right after loading an entry that carried one.
   useEffect(() => {
-    const id = historyEntryIdRef.current;
-    if (id == null) return;
+    const key = datasetKeyRef.current;
+    if (key == null) return;
     const serialized = JSON.stringify(peakSchedule ?? null);
     if (serialized === persistedScheduleRef.current) return;
     persistedScheduleRef.current = serialized;
-    void updateEntry(id, { peakSchedule: peakSchedule ?? undefined });
-  }, [peakSchedule, updateEntry]);
+    const patch: DatasetProvenance = { peakSchedule: peakSchedule ?? undefined };
+
+    // Against IndexedDB the write is local and immediate. Against Drive it is
+    // an HTTP request that rewrites the whole file body — the schedule lives
+    // inside the native JSON — while the editor emits a change per keystroke,
+    // so those writes trail behind by a beat.
+    if (keyKind(key) !== 'drive') {
+      void patchProvenance(key, patch);
+      return;
+    }
+    pendingScheduleRef.current = { key, patch };
+    if (scheduleTimerRef.current !== null) window.clearTimeout(scheduleTimerRef.current);
+    scheduleTimerRef.current = window.setTimeout(flushScheduleWrite, DRIVE_SCHEDULE_DEBOUNCE_MS);
+  }, [peakSchedule, patchProvenance, flushScheduleWrite]);
 
   // Save the loaded dataset with its peak schedule embedded, straight from the
   // peak editor — the same native .json the export panel and the merge flow
@@ -494,93 +615,157 @@ export default function App() {
 
   const showChartControls = activeTab === 'chart' || activeTab === 'analysis';
 
+  // Once there are saved datasets — or an account signed in for them to arrive
+  // in — the library is where loading starts, so "Load" opens it rather than
+  // dropping straight back to a bare file picker. Picking a different file is
+  // one click further in, from the library's own upload action.
+  const hasLibrary = historyEntries.length > 0 || auth.ready;
+
+  const openLibraryOrReset = useCallback(() => {
+    if (historyEntries.length > 0 || auth.ready) { openLibrary(); return; }
+    // Nothing saved and no account: straight back to the upload screen.
+    // Dropping the dataset drops its schedule with it — the next one starts
+    // from whatever it carries, not from this one.
+    reset();
+    applyPeakSchedule(null);
+    trackHistoryEntry(null);
+  }, [historyEntries.length, auth.ready, openLibrary, reset, applyPeakSchedule, trackHistoryEntry]);
+
   // Bring a stored entry into the app: its readings, the schedule it was saved
   // with, and the history row that later schedule edits are written back to.
-  const adoptHistoryEntry = useCallback((entry: FileHistoryEntry) => {
-    loadFromHistory(entry.data, entry.fileName, entry.resolution);
-    if (entry.peakSchedule) applyPeakSchedule(entry.peakSchedule);
-    trackHistoryEntry(entry.id, entry.peakSchedule);
+  const adoptHistoryEntry = useCallback(({ meta, data }: DatasetRecord) => {
+    loadFromHistory(data, meta.fileName, meta.resolution);
+    if (meta.peakSchedule) applyPeakSchedule(meta.peakSchedule);
+    trackHistoryEntry(meta.key, meta.peakSchedule);
     setShowRecentFiles(false);
   }, [loadFromHistory, applyPeakSchedule, trackHistoryEntry]);
 
-  const handleLoadFromHistory = useCallback(async (id: number) => {
-    const entry = await loadEntry(id);
+  const handleLoadFromHistory = useCallback(async (key: DatasetKey) => {
+    const entry = await library.load(key);
     if (entry) adoptHistoryEntry(entry);
-  }, [loadEntry, adoptHistoryEntry]);
+  }, [library, adoptHistoryEntry]);
+
+  // Back from a redirect sign-in: put the dataset that was open before the
+  // navigation back on screen. Guarded because `handleLoadFromHistory` is not a
+  // stable identity, and re-running this would yank the user off whatever they
+  // had moved on to.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!auth.returnState || restoredRef.current) return;
+    restoredRef.current = true;
+    // A Drive-backed key needs the Drive store in the library, which arrives
+    // with `driveReady` a beat after the session is written.
+    if (auth.returnState.startsWith('drive:') && !driveReady) {
+      restoredRef.current = false;
+      return;
+    }
+    void handleLoadFromHistory(auth.returnState);
+  }, [auth.returnState, driveReady, handleLoadFromHistory]);
 
   // Convert a stored file to the native .json: a compact, re-loadable copy of
   // the readings carrying whatever peak schedule that entry holds. Loading it is
   // the caller's choice — converting a file you are not switching to is a common
   // enough case that it stays the default.
-  const handleDownloadFromHistory = useCallback(async (id: number, opts: { load: boolean }) => {
-    const entry = await loadEntry(id);
+  const handleDownloadFromHistory = useCallback(async (key: DatasetKey, opts: { load: boolean }) => {
+    const entry = await library.load(key);
     if (!entry) return;
     downloadDatasetFile(entry.data, {
-      fileName: entry.fileName,
-      resolution: entry.resolution,
-      peakSchedule: entry.peakSchedule,
+      fileName: entry.meta.fileName,
+      resolution: entry.meta.resolution,
+      peakSchedule: entry.meta.peakSchedule,
     });
     if (opts.load) adoptHistoryEntry(entry);
-  }, [loadEntry, adoptHistoryEntry]);
+  }, [library, adoptHistoryEntry]);
+
+  // Combine sources into the preview every merge confirm step renders from.
+  // Sources are listed oldest-intent-first: on an overlapping interval the last
+  // one wins, so a re-issued file supersedes the copy already held.
+  const composePreview = useCallback(
+    (sources: MergeSource[], resolutions: string[]): MergePreview => {
+      const result = mergeDatasets(sources);
+      // Keep the shared resolution when all sources agree; otherwise fall back
+      // to the same RAW/DAILY threshold the upload pipeline uses.
+      const distinct = new Set(resolutions);
+      const resolution = distinct.size === 1
+        ? resolutions[0]
+        : (result.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW');
+      return {
+        ...result,
+        warnings: detectMergeWarnings(sources),
+        blockers: detectMergeBlockers(sources),
+        resolution,
+        defaultName: buildMergeName(sources.map((s) => s.fileName)),
+        flowDirection: commonValue(sources.map((s) => s.flowDirection)),
+        commodity: commonValue(sources.map((s) => s.commodity)),
+      };
+    },
+    [],
+  );
 
   // Load the selected history entries, merge them, and assemble a preview for
   // the modal to confirm. Returns null if fewer than two entries resolve.
-  const handleMergePreview = useCallback(async (ids: number[]): Promise<MergePreview | null> => {
-    const loaded = (await Promise.all(ids.map((id) => loadEntry(id))))
-      .filter((e): e is NonNullable<typeof e> => e !== null);
+  const handleMergePreview = useCallback(async (keys: DatasetKey[]): Promise<MergePreview | null> => {
+    const loaded = (await Promise.all(keys.map((key) => library.load(key))))
+      .filter((e): e is DatasetRecord => e !== null);
     if (loaded.length < 2) return null;
 
-    const sources: MergeSource[] = loaded.map((e) => ({
-      fileName: e.fileName,
-      data: e.data,
-      flowDirection: e.flowDirection,
-      commodity: e.commodity,
-      intervalLength: e.intervalLength,
-      peakSchedule: e.peakSchedule,
+    const sources: MergeSource[] = loaded.map(({ meta, data }) => ({
+      fileName: meta.fileName,
+      data,
+      flowDirection: meta.flowDirection,
+      commodity: meta.commodity,
+      intervalLength: meta.intervalLength,
+      peakSchedule: meta.peakSchedule,
     }));
-    const result = mergeDatasets(sources);
-    const warnings = detectMergeWarnings(sources);
-    const blockers = detectMergeBlockers(sources);
+    return composePreview(sources, loaded.map((e) => e.meta.resolution));
+  }, [library, composePreview]);
 
-    // Keep the shared resolution when all sources agree; otherwise fall back to
-    // the same RAW/DAILY threshold the upload pipeline uses.
-    const resolutions = new Set(loaded.map((e) => e.resolution));
-    const resolution = resolutions.size === 1
-      ? loaded[0].resolution
-      : (result.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW');
-
-    return {
-      ...result,
-      warnings,
-      blockers,
-      resolution,
-      defaultName: buildMergeName(loaded.map((e) => e.fileName)),
-      flowDirection: commonValue(sources.map((s) => s.flowDirection)),
-      commodity: commonValue(sources.map((s) => s.commodity)),
-    };
-  }, [loadEntry]);
-
-  // Confirm a merge: load it into the app, save it back to history (so it lands
-  // in Recent Files), and optionally download a re-loadable native .json copy.
+  // Confirm a merge: load it into the app, persist it where the sheet said to,
+  // and optionally download a re-loadable native .json copy. The destination is
+  // one place, not several — a merged dataset saved to Drive lives in Drive, so
+  // it does not also burn one of the five local recency slots.
   const handleMergeConfirm = useCallback(async (
     preview: MergePreview,
     name: string,
-    actions: { load: boolean; download: boolean },
+    actions: MergeActions,
   ) => {
     // Only what the merged sources themselves carried: the dataset that happens
     // to be open at merge time has no say over the new one's rate periods.
     const mergedSchedule = preview.peakSchedule ?? undefined;
+    const provenance: DatasetProvenance = {
+      isMerged: true,
+      sources: preview.sources,
+      flowDirection: preview.flowDirection,
+      commodity: preview.commodity,
+      peakSchedule: mergedSchedule,
+    };
+
+    // Persist first: a conflict on the in-place write must abort before the
+    // merged dataset replaces what the user is looking at.
+    let saved = null;
+    const destination = actions.destination;
+    if (destination.mode === 'update') {
+      const target = historyEntries.find((e) => e.key === destination.key);
+      saved = await library.replace(
+        destination.key,
+        preview.data,
+        preview.resolution,
+        provenance,
+        destination.force ? undefined : { syncVersion: target?.syncVersion },
+      );
+    } else {
+      saved = await library.save(
+        destination.mode === 'new' ? 'drive' : 'local',
+        name, preview.data, preview.resolution, provenance,
+      );
+    }
+
     if (actions.load) {
-      loadFromHistory(preview.data, name, preview.resolution);
-      const id = await saveEntry(name, preview.data, preview.resolution, {
-        isMerged: true,
-        sources: preview.sources,
-        flowDirection: preview.flowDirection,
-        commodity: preview.commodity,
-        peakSchedule: mergedSchedule,
-      });
-      if (preview.peakSchedule) applyPeakSchedule(preview.peakSchedule);
-      trackHistoryEntry(id, mergedSchedule);
+      loadFromHistory(preview.data, saved?.fileName ?? name, preview.resolution);
+      // Whatever the sources carried, including nothing: a merge that defines no
+      // rate periods must not leave the previous dataset's showing over it.
+      applyPeakSchedule(mergedSchedule ?? null);
+      trackHistoryEntry(saved?.key ?? null, mergedSchedule);
     }
     if (actions.download) {
       downloadNativeFile(preview.data, {
@@ -590,7 +775,164 @@ export default function App() {
         peakSchedule: mergedSchedule,
       });
     }
-  }, [loadFromHistory, saveEntry, applyPeakSchedule, trackHistoryEntry]);
+  }, [loadFromHistory, library, historyEntries, applyPeakSchedule, trackHistoryEntry]);
+
+  // ── Folding a picked file into a saved dataset ─────────────────────────────
+  // Adding next month's file to a history you already keep is the routine job,
+  // so it is reachable straight from the dataset it applies to: a row action in
+  // the library, a toolbar action for the open dataset, and the prompt raised
+  // by picking a file while one is open. All three land here. The combined
+  // readings are written back over that dataset in place — in this browser or
+  // in Drive, wherever it already lives — and then loaded from what was saved,
+  // so the new file never becomes a separate entry to merge afterwards.
+
+  // Which series of a multi-block incoming file to use. Tied to the file it was
+  // chosen for, so the choice cannot outlive it.
+  const [blockChoice, setBlockChoice] = useState<{ file: IncomingFile; index: number } | null>(null);
+
+  const incomingBlock = useMemo<ParsedBlock | null>(() => {
+    if (incoming?.status !== 'ready') return null;
+    if (incoming.blocks.length === 1) return incoming.blocks[0];
+    return blockChoice?.file === incoming ? incoming.blocks[blockChoice.index] : null;
+  }, [incoming, blockChoice]);
+
+  // 'merge' skips the add-or-replace question: the action that picked the file
+  // has already answered it.
+  const [incomingIntent, setIncomingIntent] = useState<'ask' | 'merge'>('ask');
+
+  // The library's per-row action: this file, into that dataset, whether or not
+  // it is the one on screen.
+  const handleAddFileToDataset = useCallback((key: DatasetKey, e: React.ChangeEvent<HTMLInputElement>) => {
+    setMergeTargetKey(key);
+    setIncomingIntent('merge');
+    holdNextUploadRef.current = true;
+    handleFileUpload(e);
+  }, [handleFileUpload]);
+
+  // An ordinary file pick, which only raises the question when something is open.
+  const handleUploadWithPrompt = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setMergeTargetKey(null);
+    setIncomingIntent('ask');
+    holdNextUploadRef.current = false;
+    handleFileUpload(e);
+  }, [handleFileUpload]);
+
+  // The target dataset plus the held file, in that order — the newly picked
+  // file is listed last so it wins any overlapping interval. Async because a
+  // target that isn't the open dataset has to be read back from its store.
+  const buildIncomingPreview = useCallback(async (): Promise<MergePreview | null> => {
+    if (!incomingBlock || !mergeTarget || incoming?.status !== 'ready') return null;
+
+    // The open dataset is already in memory; anything else costs a read, which
+    // for a Drive target is a download.
+    const isOpen = mergeTarget.key === datasetKey && (rawData?.length ?? 0) > 0;
+    let targetData = isOpen ? rawData! : null;
+    let targetSchedule = isOpen ? peakSchedule ?? undefined : mergeTarget.peakSchedule;
+    if (!targetData) {
+      const record = await library.load(mergeTarget.key);
+      if (!record?.data.length) return null;
+      targetData = record.data;
+      targetSchedule = record.meta.peakSchedule;
+    }
+
+    const sources: MergeSource[] = [
+      {
+        fileName: mergeTarget.fileName,
+        data: targetData,
+        flowDirection: mergeTarget.flowDirection,
+        commodity: mergeTarget.commodity,
+        intervalLength: mergeTarget.intervalLength,
+        peakSchedule: targetSchedule,
+      },
+      {
+        fileName: incoming.fileName,
+        data: incomingBlock.data,
+        flowDirection: incomingBlock.meta.flowDirection,
+        commodity: incomingBlock.meta.commodity,
+        intervalLength: incomingBlock.meta.intervalLength,
+        peakSchedule: incoming.peakSchedule,
+      },
+    ];
+    const incomingResolution = incomingBlock.data.length > BLOCK_DAILY_THRESHOLD ? 'DAILY' : 'RAW';
+    const preview = composePreview(sources, [mergeTarget.resolution, incomingResolution]);
+    // Adding to a dataset keeps that dataset's name — the default destination
+    // writes back over it, and the name only surfaces if the user picks a copy.
+    return { ...preview, defaultName: mergeTarget.fileName };
+  }, [incomingBlock, mergeTarget, incoming, datasetKey, rawData, peakSchedule, library, composePreview]);
+
+  const incomingDestinations = useMemo<MergeDestinationOption[]>(() => {
+    if (!mergeTarget) return [];
+    const options: MergeDestinationOption[] = [{
+      id: mergeTarget.key,
+      label: mergeTarget.kind === 'drive'
+        ? `Add to \u201C${mergeTarget.fileName}\u201D in Drive`
+        : `Add to \u201C${mergeTarget.fileName}\u201D in this browser`,
+      hint: mergeTarget.kind === 'drive'
+        ? 'Writes the combined readings back over that file. Drive keeps the previous version in its own revision history.'
+        : 'Writes the combined readings back over that entry, rather than using up another recent-files slot.',
+      value: { mode: 'update', key: mergeTarget.key },
+    }];
+    if (driveReady) options.push({ id: 'new', label: 'Save as a new file in Drive', value: { mode: 'new' } });
+    options.push({
+      id: 'none',
+      label: 'Save as a new entry in this browser',
+      hint: `Leaves \u201C${mergeTarget.fileName}\u201D untouched.`,
+      value: { mode: 'none' },
+    });
+    return options;
+  }, [mergeTarget, driveReady]);
+
+  const incomingDestination = useMemo<MergeDestination>(
+    () => (mergeTarget ? { mode: 'update', key: mergeTarget.key } : { mode: 'none' }),
+    [mergeTarget],
+  );
+
+  const closeIncoming = useCallback(() => {
+    dismissIncoming();
+    setBlockChoice(null);
+    setIncomingIntent('ask');
+    setMergeTargetKey(null);
+  }, [dismissIncoming]);
+
+  // "Open it on its own": drop the merge question and load the file the way an
+  // upload always did.
+  const replaceWithIncoming = useCallback(() => {
+    adoptIncoming(incomingBlock ?? undefined);
+    setBlockChoice(null);
+    setIncomingIntent('ask');
+    setMergeTargetKey(null);
+  }, [adoptIncoming, incomingBlock]);
+
+  // Retitle a saved dataset. The name is the only thing that changes, so the
+  // dataset on screen keeps its readings and its rate periods — only the header
+  // and the library row start calling it something else.
+  const handleRenameDataset = useCallback(async (key: DatasetKey, name: string) => {
+    const meta = await library.rename(key, name);
+    if (datasetKeyRef.current === key) renameLoaded(meta.fileName);
+  }, [library, renameLoaded]);
+
+  // Move a dataset from this browser into the Drive folder. A move, not a copy:
+  // once a dataset is in Drive that is where it lives, and leaving the browser
+  // entry behind would list the same readings twice with no way to tell which
+  // one later edits went to. Written first and dropped second, so a failed
+  // upload leaves the browser copy exactly where it was.
+  const handleMoveToDrive = useCallback(async (key: DatasetKey) => {
+    const entry = await library.load(key);
+    if (!entry) throw new Error('That dataset is no longer in this browser');
+    const { meta, data } = entry;
+    const saved = await library.save('drive', meta.fileName, data, meta.resolution, {
+      flowDirection: meta.flowDirection,
+      commodity: meta.commodity,
+      intervalLength: meta.intervalLength,
+      isMerged: meta.isMerged,
+      sources: meta.sources,
+      peakSchedule: meta.peakSchedule,
+    });
+    if (!saved) throw new Error('That dataset could not be saved to Drive');
+    await library.remove(key);
+    // Schedule edits and merge-backs follow the dataset to its new home.
+    if (datasetKeyRef.current === key) trackHistoryEntry(saved.key, meta.peakSchedule);
+  }, [library, trackHistoryEntry]);
 
   return (
     <AnimatedBackground>
@@ -608,32 +950,30 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v4
+                    v5
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
               </div>
             </div>
-            {rawData && (
-              <div className="shrink-0 flex items-center gap-2">
-                {historyEntries.length > 0 && (
-                  <button
-                    onClick={() => setShowRecentFiles(true)}
-                    title={`${historyEntries.length} recent file${historyEntries.length !== 1 ? 's' : ''}`}
-                    className="flex items-center gap-1.5 text-sm font-semibold bg-surface-3 hover:bg-white/5 text-slate-400 hover:text-slate-200 border border-line-2 hover:border-slate-500 px-3 py-2 rounded-lg transition-colors"
-                  >
-                    <History className="w-4 h-4" />
-                    <span className="text-sm font-medium">{historyEntries.length}</span>
-                  </button>
-                )}
-                {/* Dropping the dataset drops its schedule with it — the next
-                    one starts from whatever it carries, not from this one. */}
-                <button onClick={() => { reset(); applyPeakSchedule(null); trackHistoryEntry(null); }} className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-lg transition-colors">
-                  <Upload className="w-4 h-4" />
+            <div className="shrink-0 flex items-center gap-2">
+              <GoogleAccountButton auth={auth} />
+              {rawData && (
+                <button
+                  onClick={openLibraryOrReset}
+                  title={hasLibrary
+                    ? `Your datasets${historyEntries.length ? ` (${historyEntries.length})` : ''}`
+                    : 'Load another file'}
+                  className="flex items-center gap-2 text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 sm:px-4 h-[38px] rounded-lg transition-colors"
+                >
+                  {hasLibrary ? <History className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
                   <span className="hidden sm:inline">Load</span>
+                  {hasLibrary && historyEntries.length > 0 && (
+                    <span className="text-xs font-medium text-emerald-400/70">{historyEntries.length}</span>
+                  )}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </header>
 
@@ -645,9 +985,9 @@ export default function App() {
               </div>
             ) : (
               <UploadSection
-                onUpload={handleFileUpload}
+                onUpload={handleUploadWithPrompt}
                 onLoadSample={loadSampleData}
-                onShowHistory={() => setShowRecentFiles(true)}
+                onShowHistory={() => openLibrary()}
                 historyCount={historyEntries.length}
                 loading={loading}
                 error={error}
@@ -828,16 +1168,45 @@ export default function App() {
             onCancel={handleCancelBlockPicker}
           />
         )}
+        {/* A held file with several series needs one picked before anything can
+            be asked about it — the same picker an ordinary upload uses. */}
+        {incoming?.status === 'ready' && incoming.blocks.length > 1 && !incomingBlock && (
+          <BlockPickerModal
+            blocks={incoming.blocks}
+            onSelect={(index) => setBlockChoice({ file: incoming, index })}
+            onCancel={closeIncoming}
+          />
+        )}
+        {incoming && !(incoming.status === 'ready' && incoming.blocks.length > 1 && !incomingBlock) && (
+          <IncomingFileModal
+            incoming={incoming}
+            targetName={mergeTarget?.fileName ?? null}
+            targetKind={mergeTarget?.kind ?? 'local'}
+            targetIsOpen={mergeTarget != null && mergeTarget.key === datasetKey}
+            intent={incomingIntent}
+            buildPreview={buildIncomingPreview}
+            destinations={incomingDestinations}
+            initialDestination={incomingDestination}
+            onMergeConfirm={handleMergeConfirm}
+            onReplace={replaceWithIncoming}
+            onDismiss={closeIncoming}
+          />
+        )}
         {showRecentFiles && (
           <RecentFilesModal
             entries={historyEntries}
             onLoad={handleLoadFromHistory}
-            onUpload={handleFileUpload}
-            onDelete={deleteEntry}
+            onUpload={handleUploadWithPrompt}
+            onDelete={library.remove}
             onDownload={handleDownloadFromHistory}
             onClose={() => setShowRecentFiles(false)}
             onMergePreview={handleMergePreview}
             onMergeConfirm={handleMergeConfirm}
+            onAddFile={handleAddFileToDataset}
+            onRename={handleRenameDataset}
+            driveAvailable={auth.ready}
+            onMoveToDrive={handleMoveToDrive}
+            offline={!online}
           />
         )}
       </div>

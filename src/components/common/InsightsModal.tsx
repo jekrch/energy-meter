@@ -55,7 +55,7 @@ const INSIGHT_PRESETS: InsightPreset[] = [
   },
   {
     id: 'weekday-vs-weekend',
-    question: 'Weekdays vs weekends—any difference?',
+    question: 'Weekdays vs weekends: any difference?',
     description: 'Compare your daily patterns across the week',
     icon: <Calendar className="w-4 h-4" />,
     category: 'comparison',

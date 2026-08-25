@@ -6,6 +6,8 @@
 // to load the test files in, which varies between machines and CI.
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
+// A real origin rather than the default about:blank: the OAuth redirect flow
+// builds its redirect_uri from `location.origin`, and "null" is not a URL.
 if (typeof document === 'undefined') {
-  GlobalRegistrator.register();
+  GlobalRegistrator.register({ url: 'https://gbmeter.com/' });
 }

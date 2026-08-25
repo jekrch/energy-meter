@@ -141,7 +141,7 @@ export const ChartTooltip = React.memo(function ChartTooltip({
 
             {data.isPartial && (
                 <p className="text-xs text-slate-500 mt-1 italic">
-                    Partial period — not fully in range
+                    Partial period, not fully in range
                 </p>
             )}
         </div>

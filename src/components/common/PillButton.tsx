@@ -31,6 +31,8 @@ interface PillButtonProps {
   // Per-use layout: padding, text size, rounding, flex, gap.
   className?: string;
   disabled?: boolean;
+  // Hover text, for pills whose label is hidden on small screens.
+  title?: string;
   children: React.ReactNode;
 }
 
@@ -41,12 +43,14 @@ export function PillButton({
   inactiveClassName = 'text-slate-400 hover:text-slate-200',
   className = '',
   disabled = false,
+  title,
   children,
 }: PillButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`font-medium transition-colors duration-150 ${className} ${active ? activeClassName : inactiveClassName}${disabled ? ' pointer-events-none' : ''}`}
     >
       {children}

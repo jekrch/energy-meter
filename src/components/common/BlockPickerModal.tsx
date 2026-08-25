@@ -52,7 +52,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
                   Multiple reading sets found
                 </span>
                 <p className="text-[11px] text-slate-500">
-                  This file contains {blocks.length} interval blocks. Pick the one to analyze — combining them would double-count usage.
+                  This file contains {blocks.length} interval blocks. Pick the one to analyze. Combining them would double-count usage.
                 </p>
               </div>
             </div>

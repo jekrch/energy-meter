@@ -148,7 +148,7 @@ export async function geocodeZipCode(zipCode: string): Promise<GeocodingResult |
     if (!data.results?.length) {
       // Try with "USA" appended for US zip codes
       if (/^\d{5}$/.test(zipCode)) {
-        const usUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${zipCode}%20USA&count=5&language=en&format=json`;
+        const usUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(`${zipCode} USA`)}&count=5&language=en&format=json`;
         const usResponse = await fetch(usUrl);
         const usData = await usResponse.json();
         if (usData.results?.length) {
@@ -222,7 +222,18 @@ async function fetchWeatherFromAPI(
         console.log(`Weather date range clamped to ${start} - ${end} (max date: ${maxDate})`);
       }
       
-      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${start}&end_date=${end}&hourly=temperature_2m&timezone=auto`;
+      // Every value is encoded rather than interpolated raw: the coordinates
+      // come back from the geocoding API, so they are outside this app's
+      // control even though they should always be plain numbers.
+      const params = new URLSearchParams({
+        latitude: String(lat),
+        longitude: String(lon),
+        start_date: start,
+        end_date: end,
+        hourly: 'temperature_2m',
+        timezone: 'auto',
+      });
+      const url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
       
       const response = await fetch(url);
       const data = await response.json();

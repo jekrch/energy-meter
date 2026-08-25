@@ -70,11 +70,23 @@ export function serializeNativeFile(data: DataPoint[], opts: SerializeNativeOpti
   return JSON.stringify(payload);
 }
 
-// Attempt to parse a native energy-meter JSON file into the shared
-// ParsedGreenButton shape so it flows through the existing single-block upload
-// pipeline unchanged. Returns null on any mismatch — a regular `{...}` JSON file
-// then falls through to the CSV parser harmlessly.
-export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
+// The contents of a native file, read back as the app's own shapes. Everything
+// beyond the readings is optional: a v1 file predates `peakSchedule`, and a
+// hand-assembled one may name no sources.
+export interface NativeDataset {
+  fileName?: string;
+  resolution?: string;
+  sources: NativeSourceMeta[];
+  peakSchedule?: PeakSchedule;
+  data: DataPoint[];
+}
+
+// Read a native energy-meter JSON file. Returns null on any mismatch, which is
+// what lets a regular `{...}` JSON file fall through to the CSV parser
+// harmlessly. This is the single reader: the upload pipeline goes through
+// `tryParseNativeJson` below, and the Drive store — which needs the sources and
+// resolution that a ParsedGreenButton has no room for — reads it directly.
+export function readNativeFile(textData: string): NativeDataset | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(textData);
@@ -101,6 +113,26 @@ export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
 
   data.sort((a, b) => a.timestamp - b.timestamp);
 
+  // A schedule written by a newer build (or hand-edited) is validated rather
+  // than trusted; an unusable one is dropped, never fatal to the data load.
+  const peakSchedule = sanitizePeakSchedule(obj.peakSchedule);
+
+  return {
+    fileName: typeof obj.fileName === 'string' ? obj.fileName : undefined,
+    resolution: typeof obj.resolution === 'string' ? obj.resolution : undefined,
+    sources: Array.isArray(obj.sources) ? obj.sources : [],
+    ...(peakSchedule ? { peakSchedule } : {}),
+    data,
+  };
+}
+
+// Bring a native file into the shared ParsedGreenButton shape so it flows
+// through the existing single-block upload pipeline unchanged.
+export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
+  const parsed = readNativeFile(textData);
+  if (!parsed) return null;
+  const { data, peakSchedule } = parsed;
+
   const first = data[0];
   const last = data[data.length - 1];
   let totalValue = 0;
@@ -121,10 +153,6 @@ export function tryParseNativeJson(textData: string): ParsedGreenButton | null {
     totalCost,
     isCumulative: false,
   };
-
-  // A schedule written by a newer build (or hand-edited) is validated rather
-  // than trusted; an unusable one is dropped, never fatal to the data load.
-  const peakSchedule = sanitizePeakSchedule(obj.peakSchedule);
 
   return { blocks: [{ meta, data }], ...(peakSchedule ? { peakSchedule } : {}) };
 }

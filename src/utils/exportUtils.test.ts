@@ -44,6 +44,27 @@ describe('rowToCsv', () => {
   it('passes numbers through without quoting', () => {
     expect(rowToCsv({ n: 1234.56 }, ['n'])).toBe('1234.56');
   });
+
+  it('quotes a value containing a line break rather than splitting the row', () => {
+    expect(rowToCsv({ a: 'two\nlines', b: 1 }, ['a', 'b'])).toBe('"two\nlines",1');
+    expect(rowToCsv({ a: 'carriage\rreturn' }, ['a'])).toBe('"carriage\rreturn"');
+  });
+
+  it('defuses a value that a spreadsheet would evaluate as a formula', () => {
+    // A peak period name comes from an imported dataset, so it is not the
+    // app's own text: without this it would run on open in Excel or Sheets.
+    expect(rowToCsv({ peak_period: '=HYPERLINK("http://x/","go")' }, ['peak_period']))
+      .toBe('"\'=HYPERLINK(""http://x/"",""go"")"');
+    expect(rowToCsv({ v: '@SUM(A1:A9)' }, ['v'])).toBe("'@SUM(A1:A9)");
+    expect(rowToCsv({ v: '+1-2' }, ['v'])).toBe("'+1-2");
+    expect(rowToCsv({ v: '-cmd|calc' }, ['v'])).toBe("'-cmd|calc");
+  });
+
+  it('leaves ordinary values and negative numbers alone', () => {
+    expect(rowToCsv({ v: 'On-Peak' }, ['v'])).toBe('On-Peak');
+    // A number is never a formula, however it starts.
+    expect(rowToCsv({ v: -12.5 }, ['v'])).toBe('-12.5');
+  });
 });
 
 describe('computeRate', () => {
@@ -126,6 +147,81 @@ describe('buildWeatherLookup', () => {
   it('returns null well outside the data range', () => {
     const lookup = buildWeatherLookup(hourly);
     expect(lookup(100000)).toBeNull();
+  });
+
+  it('sorts unordered readings before interpolating', () => {
+    const lookup = buildWeatherLookup([
+      { timestamp: 7200, temperature: 20 },
+      { timestamp: 3600, temperature: 10 },
+    ]);
+    expect(lookup(5400)).toBe(15);
+  });
+
+  it('extends up to two hours past the last reading', () => {
+    // The window is generous on purpose: a reading timestamped just after the
+    // last weather hour should still export with a temperature.
+    const lookup = buildWeatherLookup(hourly);
+    expect(lookup(7200 + 7200)).toBe(20);
+    expect(lookup(7200 + 7201)).toBeNull();
+  });
+
+  it('extends up to two hours before the first reading', () => {
+    const lookup = buildWeatherLookup(hourly);
+    expect(lookup(3600 - 7200)).toBe(10);
+    expect(lookup(3600 - 7201)).toBeNull();
+  });
+
+  it('reaches across a gap to the nearest reading within two hours', () => {
+    // Neither the floor hour nor the hour above it has a reading, so the
+    // nearest-neighbour sweep is what answers.
+    const gapped: HourlyWeatherData[] = [
+      { timestamp: 0, temperature: 5 },
+      { timestamp: 3600 * 4, temperature: 25 },
+    ];
+    const lookup = buildWeatherLookup(gapped);
+    expect(lookup(3600 * 1)).toBe(5);   // one hour past the earlier reading
+    expect(lookup(3600 * 3)).toBe(25);  // one hour short of the later one
+  });
+
+  it('picks the closer of two candidates across a gap', () => {
+    const gapped: HourlyWeatherData[] = [
+      { timestamp: 0, temperature: 5 },
+      { timestamp: 3600 * 3, temperature: 25 },
+    ];
+    const lookup = buildWeatherLookup(gapped);
+    // 01:10 is 70 minutes from the 5° reading and 110 from the 25° one.
+    expect(lookup(3600 + 600)).toBe(5);
+    // 01:50 tips the other way.
+    expect(lookup(3600 + 3000)).toBe(25);
+  });
+
+  it('gives up inside a gap wider than the sweep', () => {
+    const gapped: HourlyWeatherData[] = [
+      { timestamp: 0, temperature: 5 },
+      { timestamp: 3600 * 8, temperature: 25 },
+    ];
+    expect(buildWeatherLookup(gapped)(3600 * 4)).toBeNull();
+  });
+
+  it('handles a single reading', () => {
+    const lookup = buildWeatherLookup([{ timestamp: 3600, temperature: 12 }]);
+    expect(lookup(3600)).toBe(12);
+    expect(lookup(3600 + 1800)).toBe(12); // no ceiling reading to interpolate to
+    expect(lookup(3600 + 7201)).toBeNull();
+  });
+
+  it('interpolates proportionally, not just at the midpoint', () => {
+    const lookup = buildWeatherLookup(hourly);
+    expect(lookup(3600 + 900)).toBeCloseTo(12.5, 10);  // a quarter of the way
+    expect(lookup(3600 + 2700)).toBeCloseTo(17.5, 10); // three quarters
+  });
+
+  it('interpolates through negative temperatures', () => {
+    const lookup = buildWeatherLookup([
+      { timestamp: 3600, temperature: -10 },
+      { timestamp: 7200, temperature: 10 },
+    ]);
+    expect(lookup(5400)).toBe(0);
   });
 });
 

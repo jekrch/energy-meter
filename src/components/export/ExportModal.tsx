@@ -493,8 +493,8 @@ export const ExportModal = React.memo(function ExportModal({
                 </div>
                 <p className="text-[11px] leading-relaxed text-slate-400">
                   Exports a lossless <span className="text-slate-300 font-mono">.json</span> copy of
-                  the loaded data that you can re-upload later — preserving exact timestamps, energy,
-                  and cost with no unit conversion. This is the same format used when saving merged
+                  the loaded data that you can re-upload later. Exact timestamps, energy, and cost are
+                  kept with no unit conversion. It's the same format used when saving merged
                   datasets. Column and grouping options don't apply.
                 </p>
                 <p className="text-[11px] leading-relaxed text-slate-500">

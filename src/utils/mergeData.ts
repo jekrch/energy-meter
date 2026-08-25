@@ -163,7 +163,7 @@ export function detectMergeWarnings(sources: MergeSource[]): string[] {
     const min = Math.min(...intervals);
     const max = Math.max(...intervals);
     if (min > 0 && max / min >= 4) {
-      warnings.push('These files use different reading intervals — they may not line up cleanly.');
+      warnings.push('These files use different reading intervals and may not line up cleanly.');
     }
   }
 
@@ -172,7 +172,7 @@ export function detectMergeWarnings(sources: MergeSource[]): string[] {
     const min = Math.min(...magnitudes);
     const max = Math.max(...magnitudes);
     if (min > 0 && max / min >= 20) {
-      warnings.push('These files have very different usage magnitudes — they may be different meters or flow directions.');
+      warnings.push('These files have very different usage magnitudes. They may be different meters or flow directions.');
     }
   }
 
@@ -185,7 +185,7 @@ export function detectMergeWarnings(sources: MergeSource[]): string[] {
       .map(scheduleFingerprint),
   );
   if (fingerprints.size > 1) {
-    warnings.push('These files carry different peak rate schedules — the merged file keeps the first one.');
+    warnings.push('These files carry different peak rate schedules. The merged file keeps the first one.');
   }
 
   return warnings;

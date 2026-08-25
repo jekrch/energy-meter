@@ -11,7 +11,8 @@ import {
   parseGreenButtonFile,
   createBrushData,
   detectRateChanges,
-  formatRate
+  formatRate,
+  generateSampleData
 } from './dataUtils';
 import type { DataPoint } from '../types';
 
@@ -881,5 +882,115 @@ describe('formatRate', () => {
   it('uses 4 decimals for very small rates', () => {
     // 0.5 → $0.005/kWh (< 0.01) → 4 decimals
     expect(formatRate(0.5)).toBe('$0.0050/kWh');
+  });
+});
+
+// The demo dataset is what a first-time visitor sees, and every downstream
+// feature (aggregation, rate-change detection, demand, the peak overlay) runs
+// against it. These cases pin the shape it must keep rather than its exact
+// values, which are deliberately randomized.
+describe('generateSampleData', () => {
+  // Generating two years of hourly readings is not cheap; build it once.
+  let data: DataPoint[];
+  beforeAll(() => { data = generateSampleData(); });
+
+  it('produces a substantial multi-month series', () => {
+    expect(data.length).toBeGreaterThan(24 * 300);
+  });
+
+  it('never runs past the present', () => {
+    const now = Date.now() / 1000;
+    expect(data[data.length - 1].timestamp).toBeLessThanOrEqual(now);
+  });
+
+  it('starts two calendar years back', () => {
+    const startYear = new Date(data[0].timestamp * 1000).getFullYear();
+    expect(startYear).toBe(new Date().getFullYear() - 2);
+  });
+
+  it('is strictly ordered in time', () => {
+    for (let i = 1; i < data.length; i++) {
+      expect(data[i].timestamp).toBeGreaterThan(data[i - 1].timestamp);
+    }
+  });
+
+  it('is evenly spaced at one hour', () => {
+    const gaps = new Set<number>();
+    for (let i = 1; i < data.length; i++) gaps.add(data[i].timestamp - data[i - 1].timestamp);
+    expect([...gaps]).toEqual([3600]);
+  });
+
+  it('declares an hourly duration, so demand derives in kW', () => {
+    expect(data.every((d) => d.duration === 3600)).toBe(true);
+  });
+
+  it('emits whole-number Wh values above the floor', () => {
+    expect(data.every((d) => Number.isInteger(d.value) && d.value >= 100)).toBe(true);
+  });
+
+  it('never produces a NaN or infinite reading', () => {
+    expect(data.every((d) => Number.isFinite(d.value) && Number.isFinite(d.cost))).toBe(true);
+  });
+
+  it('keeps usage within a plausible household range', () => {
+    const max = Math.max(...data.map((d) => d.value));
+    expect(max).toBeLessThan(20_000); // < 20 kWh in one hour
+  });
+
+  it('prices every reading at a positive rate', () => {
+    expect(data.every((d) => d.cost > 0)).toBe(true);
+  });
+
+  it('steps the rate up exactly twice over the series', () => {
+    // cost / value is the micro-dollar rate; the generator holds it flat
+    // between two increases so the rate-change card has something to find.
+    const rates = new Set(data.map((d) => +(d.cost / d.value).toFixed(6)));
+    expect(rates.size).toBe(3);
+  });
+
+  it('only ever raises the rate', () => {
+    const rates = data.map((d) => d.cost / d.value);
+    for (let i = 1; i < rates.length; i++) {
+      expect(rates[i]).toBeGreaterThanOrEqual(rates[i - 1] - 1e-9);
+    }
+  });
+
+  it('starts near the documented base rate of ~$0.12/kWh', () => {
+    expect(data[0].cost / data[0].value).toBeCloseTo(12, 5);
+  });
+
+  it('carries rate steps the rate-changes card can find', () => {
+    // The two steps are +4% and +5%, so they fall under the detector's default
+    // 8% tolerance; a tighter tolerance is what surfaces them.
+    const { changes, periods } = detectRateChanges(data, 2);
+    expect(changes).toHaveLength(2);
+    expect(periods).toHaveLength(3);
+    expect(changes.every((c) => c.direction === 'increase')).toBe(true);
+    expect(changes.every((c) => c.newRate > c.previousRate)).toBe(true);
+  });
+
+  it('surfaces the compounded increase even at the default tolerance', () => {
+    // 4% then a further 5% compounds past the 8% default, so the card is not
+    // silent on the demo data.
+    const { changes } = detectRateChanges(data);
+    expect(changes).toHaveLength(1);
+    expect(changes[0].direction).toBe('increase');
+  });
+
+  it('shows an evening peak above the small-hours baseline', () => {
+    const byHour = new Map<number, { sum: number; n: number }>();
+    for (const d of data) {
+      const h = new Date(d.timestamp * 1000).getHours();
+      const b = byHour.get(h) ?? { sum: 0, n: 0 };
+      b.sum += d.value; b.n++;
+      byHour.set(h, b);
+    }
+    const avg = (h: number) => byHour.get(h)!.sum / byHour.get(h)!.n;
+    expect(avg(19)).toBeGreaterThan(avg(3));
+  });
+
+  it('varies between runs, so the demo is not a fixed recording', () => {
+    const other = generateSampleData();
+    expect(other.map((d) => d.value)).not.toEqual(data.map((d) => d.value));
   });
 });

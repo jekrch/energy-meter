@@ -1,6 +1,10 @@
 /// <reference types="bun-types" />
-import { describe, it, expect } from 'bun:test';
-import { datasetNativeOptions, serializeNativeFile, tryParseNativeJson, NATIVE_FORMAT } from './nativeFormat';
+import '../test/happyDom';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import {
+  datasetNativeOptions, downloadDatasetFile, downloadNativeFile, serializeNativeFile,
+  tryParseNativeJson, NATIVE_FORMAT,
+} from './nativeFormat';
 import { parseGreenButtonFile } from './dataUtils';
 import type { DataPoint, PeakSchedule } from '../types';
 
@@ -178,5 +182,130 @@ describe('datasetNativeOptions', () => {
   it('carries the schedule into a file that re-parses with it', () => {
     const opts = datasetNativeOptions(sample, { fileName: 'meter.json', resolution: 'RAW', peakSchedule: schedule });
     expect(tryParseNativeJson(serializeNativeFile(sample, opts))!.peakSchedule).toEqual(schedule);
+  });
+});
+
+
+// The download helpers reach for Blob / object URLs / a click on a detached
+// anchor. happy-dom supplies the DOM; the URL pair and the click are recorded
+// so the assertions can see the file name and the bytes that would be saved.
+describe('downloadNativeFile', () => {
+  let created: Blob[] = [];
+  let revoked: string[] = [];
+  let clicks: { download: string; href: string }[] = [];
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+  const realClick = HTMLAnchorElement.prototype.click;
+
+  beforeEach(() => {
+    created = []; revoked = []; clicks = [];
+    URL.createObjectURL = ((b: Blob) => {
+      created.push(b);
+      return `blob:stub/${created.length - 1}`;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((u: string) => { revoked.push(u); }) as typeof URL.revokeObjectURL;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicks.push({ download: this.download, href: this.href });
+    };
+  });
+
+  afterEach(() => {
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+    HTMLAnchorElement.prototype.click = realClick;
+    document.body.innerHTML = '';
+  });
+
+  const opts = () => datasetNativeOptions(sample, { fileName: 'meter.csv', resolution: 'RAW' });
+
+  it('saves a JSON blob', async () => {
+    downloadNativeFile(sample, opts());
+    expect(created).toHaveLength(1);
+    expect(created[0].type).toBe('application/json');
+  });
+
+  it('writes bytes that parse back as the same dataset', async () => {
+    downloadNativeFile(sample, opts());
+    const parsed = tryParseNativeJson(await created[0].text())!;
+    expect(parsed.blocks[0].data).toEqual(sample);
+    expect(JSON.parse(await created[0].text()).format).toBe(NATIVE_FORMAT);
+  });
+
+  it('defaults to a merged-prefixed name derived from the options', () => {
+    downloadNativeFile(sample, opts());
+    expect(clicks[0].download).toBe('energy-merged-meter.json');
+  });
+
+  it('honours an explicit download name', () => {
+    downloadNativeFile(sample, opts(), 'my-export.json');
+    expect(clicks[0].download).toBe('my-export.json');
+  });
+
+  it('sanitizes a name carrying path separators', () => {
+    const o = datasetNativeOptions(sample, { fileName: 'a/b:c*d.csv', resolution: 'RAW' });
+    downloadNativeFile(sample, o);
+    expect(clicks[0].download).not.toMatch(/[/:*]/);
+  });
+
+  it('cleans up the object URL and the anchor', () => {
+    downloadNativeFile(sample, opts());
+    expect(revoked).toEqual([clicks[0].href]);
+    expect(document.querySelectorAll('a')).toHaveLength(0);
+  });
+});
+
+describe('downloadDatasetFile', () => {
+  const savedSchedule: PeakSchedule = {
+    version: 1,
+    periods: [{
+      id: 'p1', name: 'On-Peak', colorKey: 'red',
+      rules: [{ hourRanges: [{ start: 14, end: 18 }], daysOfWeek: [1, 2, 3, 4, 5], months: [] }],
+    }],
+    observeHolidays: true,
+    holidayRules: [],
+    extraHolidays: [],
+  };
+
+  let created: Blob[] = [];
+  let clicks: string[] = [];
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+  const realClick = HTMLAnchorElement.prototype.click;
+
+  beforeEach(() => {
+    created = []; clicks = [];
+    URL.createObjectURL = ((b: Blob) => { created.push(b); return 'blob:stub'; }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicks.push(this.download);
+    };
+  });
+
+  afterEach(() => {
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+    HTMLAnchorElement.prototype.click = realClick;
+    document.body.innerHTML = '';
+  });
+
+  it('names the file after the dataset, without the merged prefix', () => {
+    downloadDatasetFile(sample, { fileName: 'meter.csv', resolution: 'RAW' });
+    expect(clicks).toEqual(['energy-meter.json']);
+  });
+
+  it('falls back to a generic name when the dataset is untitled', () => {
+    downloadDatasetFile(sample, { fileName: null, resolution: 'RAW' });
+    expect(clicks).toEqual(['energy-energy-data.json']);
+  });
+
+  it('carries the peak schedule into the saved file', async () => {
+    downloadDatasetFile(sample, { fileName: 'meter.csv', resolution: 'RAW', peakSchedule: savedSchedule });
+    expect(tryParseNativeJson(await created[0].text())!.peakSchedule).toEqual(savedSchedule);
+  });
+
+  it('no-ops on an empty dataset rather than saving an empty file', () => {
+    downloadDatasetFile([], { fileName: 'meter.csv', resolution: 'RAW' });
+    expect(created).toHaveLength(0);
+    expect(clicks).toHaveLength(0);
   });
 });

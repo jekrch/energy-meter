@@ -6,6 +6,19 @@ import { BLOCK_DAILY_THRESHOLD, SAMPLE_LOAD_DELAY } from '../constants';
 
 export type LoadSource = 'upload' | 'sample' | 'history';
 
+/**
+ * A picked file parsed without disturbing the dataset already on screen. The
+ * host decides what becomes of it — fold it into the open dataset, or let it
+ * take over — via `adoptIncoming` / `dismissIncoming`.
+ */
+export interface IncomingFile {
+  fileName: string;
+  status: 'parsing' | 'ready' | 'error';
+  blocks: ParsedBlock[];
+  peakSchedule?: PeakSchedule;
+  error?: string;
+}
+
 interface UseEnergyDataOptions {
   // The chosen resolution lives with the chart state in App; loading a block
   // decides RAW vs DAILY, so the hook sets it through this.
@@ -22,18 +35,25 @@ interface UseEnergyDataOptions {
   // parse time rather than per block, because the schedule describes the file
   // rather than any one interval block.
   onPeakScheduleLoaded?: (schedule: PeakSchedule) => void;
+  /**
+   * Consulted for each picked file, before anything about the open dataset is
+   * touched. Returning true holds the parse result as `incoming` instead of
+   * loading it, so the host can offer to merge it into what is already open.
+   */
+  shouldHoldUpload?: () => boolean;
 }
 
 // Owns the loaded dataset and everything that produces it: upload/sample/block
 // handling, parse loading + error state, and the data time bounds. Extracted
 // from App so the upload pipeline is isolated from the rendering concerns.
-export function useEnergyData({ setResolution, onLoadStart, onDataLoaded, onPeakScheduleLoaded }: UseEnergyDataOptions) {
+export function useEnergyData({ setResolution, onLoadStart, onDataLoaded, onPeakScheduleLoaded, shouldHoldUpload }: UseEnergyDataOptions) {
   const [rawData, setRawData] = useState<DataPoint[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pendingBlocks, setPendingBlocks] = useState<ParsedBlock[] | null>(null);
   const [dataBounds, setDataBounds] = useState<TimeRange>({ start: null, end: null });
+  const [incoming, setIncoming] = useState<IncomingFile | null>(null);
   // Bumped in the same commit as every dataset load so App can use it as the
   // dashboard's `key` to replay the entrance animation. Incrementing it here
   // (rather than in an App effect that runs after the first paint) means the
@@ -56,24 +76,61 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded, onPeak
     onDataLoaded?.(name, block.data, res, block.meta);
   };
 
+  // Take a parsed file over as the open dataset: the schedule it carries, its
+  // readings, and the history row `onDataLoaded` names for it.
+  const load = (blocks: ParsedBlock[], name: string, peakSchedule: PeakSchedule | undefined) => {
+    if (peakSchedule) onPeakScheduleLoaded?.(peakSchedule);
+    if (blocks.length === 1) applyBlock(blocks[0], name);
+    else setPendingBlocks(blocks);
+  };
+
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Clearing the input lets the same file be picked again — which happens
+    // whenever a merge prompt is dismissed and then thought better of.
+    e.target.value = '';
     if (!file) return;
-    setLoading(true); setError(null); setFileName(file.name); onLoadStart?.('upload');
-    setPendingBlocks(null);
+    const hold = shouldHoldUpload?.() ?? false;
+
+    if (hold) setIncoming({ fileName: file.name, status: 'parsing', blocks: [] });
+    else {
+      setLoading(true); setError(null); setFileName(file.name); onLoadStart?.('upload');
+      setPendingBlocks(null);
+    }
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
         const { blocks, peakSchedule } = parseGreenButtonFile(ev.target?.result as string);
         if (blocks.length === 0) throw new Error('No IntervalReading data found.');
-        if (peakSchedule) onPeakScheduleLoaded?.(peakSchedule);
-        if (blocks.length === 1) applyBlock(blocks[0], file.name);
-        else setPendingBlocks(blocks);
+        if (hold) setIncoming({ fileName: file.name, status: 'ready', blocks, peakSchedule });
+        else load(blocks, file.name, peakSchedule);
       }
-      catch (err) { setError(err instanceof Error ? err.message : 'Error'); setRawData(null); }
-      finally { setLoading(false); }
+      catch (err) {
+        const message = err instanceof Error ? err.message : 'Error';
+        // A held file failing to parse must not empty the screen: the dataset
+        // the user is looking at had nothing to do with it.
+        if (hold) setIncoming({ fileName: file.name, status: 'error', blocks: [], error: message });
+        else { setError(message); setRawData(null); }
+      }
+      finally { if (!hold) setLoading(false); }
     };
     reader.readAsText(file);
+  };
+
+  const dismissIncoming = () => setIncoming(null);
+
+  /**
+   * Let the held file take over from the open dataset — the "replace" answer to
+   * the merge prompt. `block` narrows a multi-block file to one series.
+   */
+  const adoptIncoming = (block?: ParsedBlock) => {
+    if (!incoming || incoming.status !== 'ready') return;
+    const blocks = block ? [block] : incoming.blocks;
+    setIncoming(null);
+    setError(null); setFileName(incoming.fileName); onLoadStart?.('upload');
+    setPendingBlocks(null);
+    load(blocks, incoming.fileName, incoming.peakSchedule);
   };
 
   const handleSelectBlock = (idx: number) => {
@@ -96,6 +153,9 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded, onPeak
     setRawData(null); setFileName(null); setError(null);
   };
 
+  /** Retitle the open dataset — the readings and everything else are unchanged. */
+  const renameLoaded = (name: string) => setFileName(name);
+
   const loadFromHistory = (data: DataPoint[], name: string, savedResolution: string) => {
     onLoadStart?.('history');
     setFileName(name);
@@ -114,11 +174,15 @@ export function useEnergyData({ setResolution, onLoadStart, onDataLoaded, onPeak
     pendingBlocks,
     dataBounds,
     loadId,
+    incoming,
+    dismissIncoming,
+    adoptIncoming,
     handleFileUpload,
     handleSelectBlock,
     handleCancelBlockPicker,
     loadSampleData,
     loadFromHistory,
+    renameLoaded,
     reset,
   };
 }

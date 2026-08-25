@@ -15,7 +15,10 @@ A web application for visualizing and analyzing energy consumption data from Gre
 
 - **Green Button XML & CSV Support**: Import energy data from utility providers using the standard Green Button XML format, or from common CSV exports with auto-detected date/time, usage, and unit columns
 - **Recent Files**: Previously loaded files are saved locally in your browser so you can reopen them in one click without re-importing
+- **Rename Datasets**: Click a dataset's name in the list to retitle it — a utility export called `xcel_15min_2026.xml` becomes "Home electricity". Renaming leaves the readings and rate periods untouched, and a Drive dataset is renamed everywhere it matters, including the file in your Drive folder
 - **Merge Datasets**: Combine multiple saved files into a single continuous history, with automatic de-duplication of overlapping intervals, gap detection, and compatibility checks before merging
+- **Add a File to a Saved Dataset**: Every row in the datasets list has an "add a file" action — pick this month's export and its readings go straight into that dataset, written back over it in place, in this browser or in Drive, wherever it already lives. No separate entry to merge afterwards. Picking a file while a dataset is open asks the same question — add it, or open it on its own
+- **Google Drive Sync** (optional): Sign in with Google to keep datasets in a plainly visible `GB Energy Meter` folder in your own Drive. While you're signed in, files you open are saved there automatically instead of filling the five local slots — reopen them from any browser or device, and merge next month's file straight onto a saved cloud dataset, writing the result back in place. A dataset saved while signed out can be moved up to Drive from the list, and local and Drive datasets are listed side by side and can be merged with each other
 - **Export Data**: Export readings to CSV or JSON with selectable columns and optional grouping (hourly, daily, weekly, monthly). A re-loadable JSON option saves a lossless copy of the loaded data (preserving exact timestamps, energy, and cost) that can be re-imported later and is typically much smaller than the original Green Button XML
 - **Demo Data**: Try the app with realistic sample data spanning 2 years
 
@@ -39,7 +42,7 @@ A web application for visualizing and analyzing energy consumption data from Gre
 ### Display & Storage
 
 - **Flexible Units**: Switch between Wh, kWh, and MWh display units
-- **Local Caching**: Weather data is cached in IndexedDB to minimize API requests
+- **Local Caching**: Weather data is cached in IndexedDB to minimize API requests, and Drive datasets are cached by their Drive `modifiedTime` so reopening one costs no network request
 
 ## Tech Stack
 
@@ -82,6 +85,14 @@ bun run dev
 
 Open your browser and navigate to the local URL provided in the terminal (usually `http://localhost:5173`).
 
+To exercise Drive sync against your own Google OAuth client, set
+`VITE_GOOGLE_CLIENT_ID` and register the app's URL under **both** *Authorized
+JavaScript origins* and *Authorized redirect URIs* on that client
+(`http://localhost:5173` and `http://localhost:5173/` respectively). The
+redirect URI is what touch devices come back to: they sign in by leaving the tab
+rather than through a popup, because a popup on a phone is a second tab the user
+has to navigate back from by hand.
+
 ### Building for Production
 
 To create a production build:
@@ -93,6 +104,31 @@ bun run build
 ## Data Privacy
 
 All data processing happens locally in your browser. Energy data files are never uploaded to any server. Weather location preferences are stored in localStorage and weather data is cached in IndexedDB on your device.
+
+### Google Drive sync
+
+Drive sync is optional and off until you sign in. There is no backend: this app
+is static files served from a CDN.
+
+- **One permission.** Sign-in requests a single scope,
+  [`drive.file`](https://developers.google.com/workspace/drive/api/guides/api-specific-auth),
+  which grants access *only* to files this app itself creates. It cannot see,
+  read, or list anything else in your Drive: including files you upload into
+  its own folder by hand.
+- **Your Drive, your files.** Datasets are written to a normal, visible folder
+  named `GB Energy Meter` in My Drive, as ordinary gzipped JSON. You can open,
+  download, move, or delete them yourself at any time, and removing one from the
+  app moves it to your Drive trash rather than erasing it.
+- **The token stays in the browser.** Google returns the access token directly
+  to the page; it is held in `sessionStorage` for that tab only, sent nowhere
+  but Google's own API, and discarded when you sign out or close the tab.
+- **Signing in is the consent.** While you are signed in, a file you open is
+  saved to your Drive folder instead of the browser's local history: keeping
+  datasets there is the point of connecting an account. Signed out, no Google
+  service is contacted at all and imports stay in this browser. You can delete
+  a dataset from Drive at any time, from the app or from Drive itself.
+- **No analytics on your data.** The app collects nothing about you or your
+  readings.
 
 ## License
 

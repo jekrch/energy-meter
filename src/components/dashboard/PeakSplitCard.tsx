@@ -78,7 +78,7 @@ export const PeakSplitCard = React.memo(function PeakSplitCard({
                         </p>
                     </div>
                     {onPeakDemand && onPeakDemand.maxDemand > 0 && (
-                        <div className="text-left sm:text-right" title={`${onPeakDemand.name} — ${whenLabel(onPeakDemand.maxDemandTs)}`}>
+                        <div className="text-left sm:text-right" title={`${onPeakDemand.name}: ${whenLabel(onPeakDemand.maxDemandTs)}`}>
                             <span className="text-slate-500">On-Peak Demand</span>
                             <p className="text-red-400 font-mono slashed-zero tabular-nums font-medium">
                                 {formatDemandValue(onPeakDemand.maxDemand)}
@@ -95,7 +95,7 @@ export const PeakSplitCard = React.memo(function PeakSplitCard({
                     {rows.map(entry => (
                         <div
                             key={entry.periodIdx}
-                            title={`${entry.name} — ${(entry.energyShare * 100).toFixed(1)}%`}
+                            title={`${entry.name}: ${(entry.energyShare * 100).toFixed(1)}%`}
                             style={{ width: `${entry.energyShare * 100}%`, backgroundColor: colorOf(entry.colorKey) }}
                         />
                     ))}
@@ -121,7 +121,7 @@ export const PeakSplitCard = React.memo(function PeakSplitCard({
                             <span
                                 className="font-mono slashed-zero tabular-nums font-medium text-slate-300 w-20 text-right whitespace-nowrap"
                                 title={entry.maxDemand > 0
-                                    ? `Highest demand in ${entry.name} — ${whenLabel(entry.maxDemandTs)}`
+                                    ? `Highest demand in ${entry.name}: ${whenLabel(entry.maxDemandTs)}`
                                     : undefined}
                             >
                                 {entry.maxDemand > 0 ? (

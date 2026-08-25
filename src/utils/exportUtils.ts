@@ -229,21 +229,31 @@ export function buildAggRow(
 
 // ─── CSV serialization ──────────────────────────────────────────────────────
 
+// Excel, Sheets and Numbers evaluate any cell whose text begins with one of
+// these, and quoting does not stop them — `"=1+1"` is still a formula. Not all
+// string values here are the app's own: a peak period name is typed by the user
+// and travels inside shared `.json` datasets, so an imported file could put
+// `=HYPERLINK(...)` in the reader's spreadsheet. A leading apostrophe is the
+// standard defusal; spreadsheets hide it and show the literal text.
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+
+// A field must be quoted when it carries a delimiter, a quote, or a line break
+// — the last of which would otherwise split one reading across two CSV rows.
+const NEEDS_QUOTING = /[",\n\r]/;
+
+function csvField(value: string): string {
+  const safe = FORMULA_LEAD.test(value) ? `'${value}` : value;
+  return NEEDS_QUOTING.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
+}
+
 export function rowToCsv(row: Record<string, unknown>, headerKeys: string[]): string {
   let line = '';
   for (let i = 0; i < headerKeys.length; i++) {
     if (i > 0) line += ',';
     const val = row[headerKeys[i]];
     if (val == null) continue;
-    if (typeof val === 'string') {
-      if (val.indexOf(',') !== -1 || val.indexOf('"') !== -1) {
-        line += '"' + val.replace(/"/g, '""') + '"';
-      } else {
-        line += val;
-      }
-    } else {
-      line += val;
-    }
+    // Numbers are never quoted or defused: a negative number is not a formula.
+    line += typeof val === 'string' ? csvField(val) : val;
   }
   return line;
 }

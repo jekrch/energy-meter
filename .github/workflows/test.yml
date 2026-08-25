@@ -6,16 +6,25 @@ on:
   pull_request:
     branches: [main]
 
+# The job reads the checkout and nothing else. Without this it would run with
+# whatever the repository default grants, which is write on many repos.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned by commit SHA: a tag is mutable, so `@v4` means
+      # "whatever that tag points at the next time this runs".
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
 
-      - run: bun install
+      # --frozen-lockfile: install exactly what the lockfile pins, so a
+      # dependency cannot be swapped underneath CI between review and merge.
+      - run: bun install --frozen-lockfile
       - run: bun test
