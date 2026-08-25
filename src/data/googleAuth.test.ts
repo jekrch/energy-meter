@@ -73,6 +73,10 @@ afterEach(() => {
   unregister?.();
   unregister = null;
   globalThis.fetch = realFetch;
+  // These live on the shared happy-dom window, which outlives this file: left
+  // stubbed, they would answer for every test bun runs after it.
+  window.matchMedia = DEFAULT_MATCH_MEDIA;
+  window.location.assign = DEFAULT_LOCATION_ASSIGN;
 });
 
 describe('signIn', () => {
@@ -149,6 +153,7 @@ describe('trySilentRefresh', () => {
 // other replays the URL it was sent back to.
 
 const DEFAULT_MATCH_MEDIA = window.matchMedia;
+const DEFAULT_LOCATION_ASSIGN = window.location.assign;
 
 /** Make `prefersRedirectFlow()` true, as a phone would. */
 function pretendTouchDevice(): void {
@@ -174,7 +179,6 @@ function arriveWith(params: Record<string, string>): void {
 
 describe('redirect sign-in', () => {
   afterEach(() => {
-    window.matchMedia = DEFAULT_MATCH_MEDIA;
     setReturnStateProvider(null);
     window.location.hash = '';
     sessionStorage.removeItem('energy-meter:gauth:redirect');
@@ -219,7 +223,7 @@ describe('redirect sign-in', () => {
     await signIn();
 
     arriveWith({ access_token: 'forged', expires_in: '3600', scope: DRIVE_SCOPE, state: 'other' });
-    expect(completeRedirectSignIn()).rejects.toThrow(/could not be verified/);
+    await expect(completeRedirectSignIn()).rejects.toThrow(/could not be verified/);
     expect(getAccessToken()).toBeNull();
   });
 
@@ -233,7 +237,7 @@ describe('redirect sign-in', () => {
     await completeRedirectSignIn();
 
     arriveWith({ access_token: 'tok-a', expires_in: '3600', scope: DRIVE_SCOPE, state });
-    expect(completeRedirectSignIn()).rejects.toThrow(/could not be verified/);
+    await expect(completeRedirectSignIn()).rejects.toThrow(/could not be verified/);
   });
 
   it('reports a refusal on the consent screen', async () => {
@@ -243,7 +247,7 @@ describe('redirect sign-in', () => {
     const state = new URL(nav.url as string).searchParams.get('state') as string;
 
     arriveWith({ error: 'access_denied', state });
-    expect(completeRedirectSignIn()).rejects.toThrow(/cancelled/);
+    await expect(completeRedirectSignIn()).rejects.toThrow(/cancelled/);
   });
 
   it('names the Drive checkbox when the grant comes back without it', async () => {
@@ -253,7 +257,7 @@ describe('redirect sign-in', () => {
     const state = new URL(nav.url as string).searchParams.get('state') as string;
 
     arriveWith({ access_token: 'tok-a', expires_in: '3600', scope: 'openid', state });
-    expect(completeRedirectSignIn()).rejects.toThrow(/Google Drive box/);
+    await expect(completeRedirectSignIn()).rejects.toThrow(/Google Drive box/);
   });
 
   it('ignores a page load carrying an unrelated fragment', async () => {
