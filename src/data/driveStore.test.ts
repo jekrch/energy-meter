@@ -1,8 +1,9 @@
 /// <reference types="bun-types" />
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test';
 import 'fake-indexeddb/auto';
 import type { DataPoint, PeakSchedule } from '../types';
 import type { DriveFile, DriveFileMetadata } from './driveClient';
+import * as realDriveClientModule from './driveClient';
 
 // An in-memory stand-in for the folder: enough of Drive to exercise the store's
 // own logic (metadata mapping, gzip framing, the conflict check, the write
@@ -21,6 +22,10 @@ function stamp(file: FakeFile): FakeFile {
   file.modifiedTime = new Date(1_700_000_000_000 + Number(file.version) * 1000).toISOString();
   return file;
 }
+
+// Captured before the mock lands, for the same reason as in `driveClient.test.ts`:
+// a module mock is global and permanent unless the real namespace is put back.
+const realDriveClient = { ...realDriveClientModule };
 
 mock.module('./driveClient', () => ({
   DriveAuthError: class DriveAuthError extends Error {},
@@ -441,4 +446,9 @@ describe('driveStore — deleting', () => {
     expect(files.size).toBe(0);
     expect(await driveStore.list()).toHaveLength(0);
   });
+});
+
+// Hand the real module back, so the mock cannot outlive this file.
+afterAll(() => {
+  mock.module('./driveClient', () => realDriveClient);
 });

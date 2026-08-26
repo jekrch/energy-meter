@@ -1,9 +1,10 @@
 /// <reference types="bun-types" />
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test';
 import {
   DriveAuthError, FOLDER_MIME, createFile, deleteFile, downloadBlob, ensureFolder,
   folderUrl, getFileMeta, listFiles, quote, trashFile, updateFile, updateFileMetadata,
 } from './driveClient';
+import * as realGoogleAuthModule from './googleAuth';
 
 // The client is exercised against a stubbed fetch: no test touches real Drive.
 // `googleAuth` is mocked at the module level so token state is a test fixture
@@ -12,6 +13,13 @@ let token: string | null = 'tok-1';
 let refreshResult: string | null = 'tok-2';
 let refreshCalls = 0;
 
+// Captured before the mock replaces the registry entry: `mock.module` rewrites
+// the namespace object in place and bun never undoes it, so without putting the
+// real exports back this stub would still be what `googleAuth.test.ts` imports
+// whenever bun happens to order that file after this one. `mock.restore()` does
+// not reach module mocks — re-registering the real namespace is what does.
+const realGoogleAuth = { ...realGoogleAuthModule };
+
 mock.module('./googleAuth', () => ({
   getAccessToken: () => token,
   trySilentRefresh: async () => {
@@ -19,8 +27,9 @@ mock.module('./googleAuth', () => ({
     token = refreshResult;
     return refreshResult;
   },
-  // Bun shares one module registry across test files, so this stand-in is what
-  // `driveStore` sees too — it must carry the whole surface that module imports.
+  // Bun shares one module registry across test files, so while this stand-in is
+  // installed it is what `driveStore` sees too — it must carry the whole surface
+  // that module imports.
   onAuthReset: () => () => {},
 }));
 
@@ -298,4 +307,9 @@ describe('folderUrl', () => {
   it('builds the browser link for a folder id', () => {
     expect(folderUrl('1AbC')).toBe('https://drive.google.com/drive/folders/1AbC');
   });
+});
+
+// Hand the real module back, so the mock cannot outlive this file.
+afterAll(() => {
+  mock.module('./googleAuth', () => realGoogleAuth);
 });
