@@ -52,9 +52,10 @@ export function ChartToolbar({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <PillGroup className="bg-sunken rounded-lg">
+      <PillGroup className="bg-sunken rounded-lg" activeId={metricMode}>
 
         <PillButton
+          id="cost"
           active={metricMode === 'cost'}
           onClick={() => setMetricMode('cost')}
           activeClassName="bg-emerald-500/15 text-emerald-400"
@@ -64,6 +65,7 @@ export function ChartToolbar({
           <span className="hidden xs:inline">Cost</span>
         </PillButton>
         <PillButton
+          id="energy"
           active={metricMode === 'energy'}
           onClick={() => setMetricMode('energy')}
           activeClassName="bg-amber-500/15 text-amber-400"
@@ -73,6 +75,7 @@ export function ChartToolbar({
           <span className="hidden xs:inline">Energy</span>
         </PillButton>
         <PillButton
+          id="demand"
           active={metricMode === 'demand'}
           onClick={() => setMetricMode('demand')}
           activeClassName="bg-violet-500/15 text-violet-400"
@@ -91,10 +94,11 @@ export function ChartToolbar({
       )}
 
       {metricMode === 'energy' && (
-        <PillGroup className="bg-sunken rounded-lg">
+        <PillGroup className="bg-sunken rounded-lg" activeId={energyUnit}>
           {ENERGY_UNITS.map(({ value, label }) => (
             <PillButton
               key={value}
+              id={value}
               active={energyUnit === value}
               onClick={() => setEnergyUnit(value)}
               activeClassName="bg-amber-500/15 text-amber-400"
@@ -107,10 +111,11 @@ export function ChartToolbar({
       )}
 
       {activeTab === 'chart' && (
-        <PillGroup className="bg-sunken rounded-lg">
+        <PillGroup className="bg-sunken rounded-lg" activeId={resolution}>
           {Object.keys(RESOLUTIONS).map((key) => (
             <PillButton
               key={key}
+              id={key}
               active={resolution === key}
               onClick={() => setResolution(key)}
               activeClassName="bg-emerald-500/15 text-emerald-400"
@@ -173,8 +178,9 @@ export function ChartToolbar({
         />
 
         {weather.enabled && weather.location && (
-          <PillGroup className="bg-sunken rounded-lg">
+          <PillGroup className="bg-sunken rounded-lg" activeId={temperatureUnit}>
             <PillButton
+              id="F"
               active={temperatureUnit === 'F'}
               onClick={() => setTemperatureUnit('F')}
               activeClassName="bg-sky-500/15 text-sky-400"
@@ -183,6 +189,7 @@ export function ChartToolbar({
               °F
             </PillButton>
             <PillButton
+              id="C"
               active={temperatureUnit === 'C'}
               onClick={() => setTemperatureUnit('C')}
               activeClassName="bg-sky-500/15 text-sky-400"

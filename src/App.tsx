@@ -5,6 +5,9 @@ import { ExportModal } from './components/export/ExportModal';
 // Types and Utilities
 import { type TimeRange, type MetricMode, type PeakSchedule, type DataPoint } from './types';
 import { formatCost, toDollars, formatShortDate, parseDateTimeLocal } from './utils/formatters';
+import {
+  useSlidingHighlight, highlightStyle, SLIDING_HIGHLIGHT_CLASS,
+} from './hooks/useSlidingHighlight';
 import { createBrushData, type IntervalBlockMeta, type ParsedBlock } from './utils/dataUtils';
 import { mergeDatasets, detectMergeWarnings, detectMergeBlockers, buildMergeName, commonValue, type MergePreview, type MergeSource } from './utils/mergeData';
 import { downloadDatasetFile, downloadNativeFile } from './utils/nativeFormat';
@@ -57,6 +60,12 @@ const DRIVE_SCHEDULE_DEBOUNCE_MS = 2000;
 export default function App() {
   // UI State
   const [activeTab, setActiveTab] = useState<'chart' | 'table' | 'analysis'>('analysis');
+  // Slides one highlight between the view tabs instead of blinking it off one
+  // and on the next. The bar only exists once a dataset is loaded; the hook
+  // measures when its buttons attach.
+  const {
+    containerRef: tabStripRef, setItemRef: setTabRef, rect: tabHighlight,
+  } = useSlidingHighlight<'chart' | 'table' | 'analysis'>(activeTab);
   const [resolution, setResolution] = useState<string>('RAW');
   const [page, setPage] = useState(1);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -662,6 +671,21 @@ export default function App() {
     void handleLoadFromHistory(auth.returnState);
   }, [auth.returnState, driveReady, handleLoadFromHistory]);
 
+  // Signing in is nearly always "get at my saved datasets", so a completed
+  // sign-in — from the header, the empty state, anywhere — opens the library on
+  // the account's files rather than leaving the user to click through to them.
+  // Not on the return leg of a redirect that is restoring a dataset: the effect
+  // above puts that back on screen and closes the modal again a beat later.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    // Cleared on sign-out, so signing back in during the same session opens it
+    // again rather than being taken for the sign-in already handled.
+    if (!auth.justSignedIn) { autoOpenedRef.current = false; return; }
+    if (auth.returnState || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    openLibrary();
+  }, [auth.justSignedIn, auth.returnState, openLibrary]);
+
   // Convert a stored file to the native .json: a compact, re-loadable copy of
   // the readings carrying whatever peak schedule that entry holds. Loading it is
   // the caller's choice — converting a file you are not switching to is a common
@@ -1051,10 +1075,17 @@ export default function App() {
                 <div ref={panelRef} className="rise-in bg-surface-2 rounded-2xl border border-line hover:border-white/30 transition-colors duration-150 overflow-hidden flex flex-col min-h-[600px]" style={{ animationDelay: '420ms' }}>
                   <div className="border-b border-header-line px-3 md:px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex bg-sunken p-1 rounded-lg border border-line">
-                        <TabButton active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
-                        <TabButton active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
-                        <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
+                      <div ref={tabStripRef} className="relative flex bg-sunken p-1 rounded-lg border border-line">
+                        {tabHighlight && (
+                          <div
+                            aria-hidden
+                            className={`${SLIDING_HIGHLIGHT_CLASS} rounded-md bg-emerald-500/12`}
+                            style={highlightStyle(tabHighlight)}
+                          />
+                        )}
+                        <TabButton ref={setTabRef('analysis')} active={activeTab === 'analysis'} onClick={() => setActiveTab('analysis')} icon={<BarChart2 className="w-4 h-4" />}>Analysis</TabButton>
+                        <TabButton ref={setTabRef('chart')} active={activeTab === 'chart'} onClick={() => setActiveTab('chart')} icon={<TrendingUp className="w-4 h-4" />}>Chart</TabButton>
+                        <TabButton ref={setTabRef('table')} active={activeTab === 'table'} onClick={() => setActiveTab('table')} icon={<FileText className="w-4 h-4" />}>Data</TabButton>
                       </div>
 
                       <div className="text-[11px] text-slate-500">

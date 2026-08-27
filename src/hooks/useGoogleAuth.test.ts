@@ -112,6 +112,29 @@ describe('useGoogleAuth signing in', () => {
     expect(result.current.busy).toBe(false);
   });
 
+  it('raises justSignedIn only once the popup sign-in lands', async () => {
+    const { result } = await mountHook();
+    expect(result.current.justSignedIn).toBe(false);
+
+    await act(async () => { await result.current.signIn(); });
+    expect(result.current.justSignedIn).toBe(true);
+  });
+
+  it('leaves justSignedIn down when the grant is refused', async () => {
+    grant = null;
+    const { result } = await mountHook();
+    await act(async () => { await result.current.signIn(); });
+    expect(result.current.justSignedIn).toBe(false);
+  });
+
+  it('leaves justSignedIn down for a session already in storage', async () => {
+    await act(async () => { await signIn(); });
+    const { result } = await mountHook();
+
+    expect(result.current.ready).toBe(true);
+    expect(result.current.justSignedIn).toBe(false);
+  });
+
   it('surfaces a refused grant as an error rather than a signed-in state', async () => {
     grant = null;
     const { result } = await mountHook();
@@ -155,6 +178,18 @@ describe('useGoogleAuth signing out', () => {
     expect(result.current.user).toBeNull();
     expect(result.current.ready).toBe(false);
     expect(result.current.expired).toBe(false);
+  });
+
+  it('lowers justSignedIn so a later sign-in raises it again', async () => {
+    const { result } = await mountHook();
+    await act(async () => { await result.current.signIn(); });
+    expect(result.current.justSignedIn).toBe(true);
+
+    await act(async () => { result.current.signOut(); await advanceTime(0); });
+    expect(result.current.justSignedIn).toBe(false);
+
+    await act(async () => { await result.current.signIn(); });
+    expect(result.current.justSignedIn).toBe(true);
   });
 
   it('clears any standing error', async () => {

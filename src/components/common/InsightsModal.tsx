@@ -8,6 +8,9 @@ import type { EnergyUnit } from '../../utils/energyUnits';
 import type { RankingEntry } from '../../utils/rankings';
 import { TopRankings } from './TopRankings';
 import { usePersistentState } from '../../hooks/usePersistentState';
+import {
+  useSlidingHighlight, indicatorStyle, SLIDING_HIGHLIGHT_INDICATOR_CLASS,
+} from '../../hooks/useSlidingHighlight';
 
 export interface InsightPreset {
   id: string;
@@ -145,6 +148,11 @@ interface InsightsModalProps {
 
 type ModalTab = 'insights' | 'rankings';
 
+const MODAL_TABS = [
+  { id: 'insights', label: 'Guided Insights', Icon: Lightbulb },
+  { id: 'rankings', label: 'Top Rankings', Icon: ListOrdered },
+] as const;
+
 export const InsightsModal = React.memo(function InsightsModal({
   onSelectInsight,
   onViewRanking,
@@ -158,6 +166,16 @@ export const InsightsModal = React.memo(function InsightsModal({
   const [isExpanded, setIsExpanded] = useState(false);
   const [tab, setTab] = usePersistentState<ModalTab>('gb-insights-tab', 'insights');
   const modalRef = useRef<ModalHandle>(null);
+
+  // The rankings pane spins up a worker and copies the dataset to it, so we
+  // don't mount it until it's actually asked for — but once mounted it stays,
+  // hidden, so flipping back to it is instant instead of another loading pass.
+  const [hasVisitedRankings, setHasVisitedRankings] = useState(tab === 'rankings');
+  if (tab === 'rankings' && !hasVisitedRankings) setHasVisitedRankings(true);
+
+  // Measured rather than computed: these tabs are label-width, not equal
+  // halves. The strip only exists while the modal is open, hence the dep.
+  const tabStrip = useSlidingHighlight<ModalTab>(tab, [isExpanded]);
 
   const closeModal = useCallback(() => setIsExpanded(false), []);
   const openModal = useCallback(() => setIsExpanded(true), []);
@@ -181,7 +199,8 @@ export const InsightsModal = React.memo(function InsightsModal({
       ref={modalRef}
       onClose={closeModal}
       overlayClassName="pt-[10vh] bg-black/30 backdrop-blur-[2px]"
-      panelClassName="max-w-lg md:max-w-xl max-h-[75vh]"
+      panelClassName="max-w-lg md:max-w-xl h-[min(75vh,42rem)]"
+      cardClassName="flex-1 min-h-0"
       ariaLabel="Explore your data"
     >
           {/* Header */}
@@ -203,74 +222,108 @@ export const InsightsModal = React.memo(function InsightsModal({
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1 px-3 pt-3 flex-shrink-0">
-            <button
-              onClick={() => setTab('insights')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                tab === 'insights'
-                  ? 'bg-surface-3 text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-              }`}
-            >
-              <Lightbulb className="w-3.5 h-3.5" />
-              Guided Insights
-            </button>
-            <button
-              onClick={() => setTab('rankings')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                tab === 'rankings'
-                  ? 'bg-surface-3 text-slate-100'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-              }`}
-            >
-              <ListOrdered className="w-3.5 h-3.5" />
-              Top Rankings
-            </button>
+          {/* Tabs — underlined rather than free-floating pills, so the strip
+              reads as a bar the panes hang off of and the rule it sits on
+              separates it from the scroll area below. */}
+          <div
+            ref={tabStrip.containerRef}
+            role="tablist"
+            aria-label="Explore your data sections"
+            className="relative flex gap-1 px-3 bg-sunken/60 border-b border-header-line flex-shrink-0"
+          >
+            {/* One indicator that slides to the picked tab instead of blinking
+                off one and on the next. It rides the bar's bottom rule. */}
+            {tabStrip.rect && (
+              <div
+                aria-hidden
+                className={`${SLIDING_HIGHLIGHT_INDICATOR_CLASS} bg-amber-400`}
+                style={indicatorStyle(tabStrip.rect)}
+              />
+            )}
+            {MODAL_TABS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                ref={tabStrip.setItemRef(id)}
+                onClick={() => setTab(id)}
+                role="tab"
+                aria-selected={tab === id}
+                aria-controls={`insights-panel-${id}`}
+                className={`relative flex items-center gap-1.5 px-3 py-2.5 rounded-t-md text-xs font-medium transition-colors ${
+                  tab === id
+                    ? 'text-amber-300'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* Content */}
-          <div className="overflow-y-auto flex-1 p-3 space-y-4">
-            {tab === 'rankings' ? (
-              <TopRankings
-                data={data}
-                weather={weather}
-                hasTemperature={hasTemperature}
-                energyUnit={energyUnit}
-                temperatureUnit={temperatureUnit}
-                onViewRanking={handleViewRanking}
-              />
-            ) : (
-            CATEGORIES.map((category) => (
-              <div key={category.id}>
-                <div className="px-1 mb-2">
-                  <h3 className="text-xs font-medium text-slate-300">{category.label}</h3>
-                  <p className="text-[10px] text-slate-500">{category.description}</p>
-                </div>
-                <div className="space-y-1.5">
-                  {INSIGHT_PRESETS.filter((p) => p.category === category.id).map((preset) => (
-                    <button
-                      key={preset.id}
-                      onClick={() => handleSelectInsight(preset)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface-2 hover:bg-surface-3 border border-line hover:border-line-2 rounded-lg transition-colors group text-left"
-                    >
-                      <div className="p-1.5 bg-surface-3 group-hover:bg-white/10 rounded-md text-slate-400 group-hover:text-amber-400 transition-colors flex-shrink-0">
-                        {preset.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-slate-200 group-hover:text-white transition-colors">
-                          {preset.question}
+          {/* Content — both panes stay mounted so switching tabs doesn't
+              re-run the rankings worker (and flash its loader) every time, and
+              each pane keeps its own scroll position. `scrollbar-gutter` keeps
+              the gutter reserved so a short pane doesn't shift things sideways. */}
+          <div className="flex-1 min-h-0 flex">
+            <div
+              id="insights-panel-insights"
+              role="tabpanel"
+              aria-label="Guided Insights"
+              className={`flex-1 overflow-y-auto overscroll-contain p-3 space-y-4 [scrollbar-gutter:stable] ${
+                tab === 'insights' ? '' : 'hidden'
+              }`}
+            >
+              {CATEGORIES.map((category) => (
+                <div key={category.id}>
+                  <div className="px-1 mb-2">
+                    <h3 className="text-xs font-medium text-slate-300">{category.label}</h3>
+                    <p className="text-[10px] text-slate-500">{category.description}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {INSIGHT_PRESETS.filter((p) => p.category === category.id).map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={() => handleSelectInsight(preset)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface-2 hover:bg-surface-3 border border-line hover:border-line-2 rounded-lg transition-colors group text-left"
+                      >
+                        <div className="p-1.5 bg-surface-3 group-hover:bg-white/10 rounded-md text-slate-400 group-hover:text-amber-400 transition-colors flex-shrink-0">
+                          {preset.icon}
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          {preset.description}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-slate-200 group-hover:text-white transition-colors">
+                            {preset.question}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {preset.description}
+                          </div>
                         </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150 flex-shrink-0" />
-                    </button>
-                  ))}
+                        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-[color,transform] duration-150 flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Mounted on first visit, then kept alive for the rest of the session. */}
+            {hasVisitedRankings && (
+              <div
+                id="insights-panel-rankings"
+                role="tabpanel"
+                aria-label="Top Rankings"
+                className={`flex-1 overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable] ${
+                  tab === 'rankings' ? '' : 'hidden'
+                }`}
+              >
+                <TopRankings
+                  data={data}
+                  weather={weather}
+                  hasTemperature={hasTemperature}
+                  energyUnit={energyUnit}
+                  temperatureUnit={temperatureUnit}
+                  onViewRanking={handleViewRanking}
+                />
               </div>
-            ))
             )}
           </div>
 

@@ -414,8 +414,9 @@ export const ExportModal = React.memo(function ExportModal({
               <label className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">
                 Format
               </label>
-              <PillGroup className="bg-sunken rounded-lg">
+              <PillGroup className="bg-sunken rounded-lg" activeId={format}>
                 <PillButton
+                  id="csv"
                   active={format === 'csv'}
                   onClick={() => setFormat('csv')}
                   disabled={isExporting}
@@ -426,6 +427,7 @@ export const ExportModal = React.memo(function ExportModal({
                   CSV
                 </PillButton>
                 <PillButton
+                  id="json"
                   active={format === 'json'}
                   onClick={() => setFormat('json')}
                   disabled={isExporting}
@@ -436,6 +438,7 @@ export const ExportModal = React.memo(function ExportModal({
                   JSON
                 </PillButton>
                 <PillButton
+                  id="native"
                   active={format === 'native'}
                   onClick={() => setFormat('native')}
                   disabled={isExporting}
@@ -555,10 +558,11 @@ export const ExportModal = React.memo(function ExportModal({
                   <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">
                     Rate Unit
                   </label>
-                  <PillGroup className="bg-sunken rounded-md">
+                  <PillGroup className="bg-sunken rounded-md" activeId={rateUnit} highlightClassName="rounded">
                     {RATE_UNIT_OPTIONS.map(opt => (
                       <PillButton
                         key={opt.value}
+                        id={opt.value}
                         active={rateUnit === opt.value}
                         onClick={() => setRateUnit(opt.value)}
                         disabled={isExporting}

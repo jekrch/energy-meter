@@ -17,6 +17,9 @@ import { formatDemandAxis } from '../../utils/demandUnits';
 import { useTouchDevice, useTooltipControl } from '../../hooks/useTooltipControl';
 import { useDebouncedValue } from '../../hooks/useDebounceValue';
 import { useDeferredLoading } from '../../hooks/useDeferredLoading';
+import {
+  useSlidingHighlight, highlightStyle, SLIDING_HIGHLIGHT_CLASS,
+} from '../../hooks/useSlidingHighlight';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 import { DownloadChartButton } from '../common/DownloadChartButton';
 import { downsampleLTTB } from '../../utils/dataUtils';
@@ -93,6 +96,15 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const MAX_ANALYSIS_POINTS = 500;
     const [isPending, startTransition] = useTransition();
+
+    // One highlight per strip, sliding to the picked option rather than
+    // blinking off the old one and on the new.
+    const {
+        containerRef: groupByStripRef, setItemRef: setGroupByRef, rect: groupByHighlight,
+    } = useSlidingHighlight<'hour' | 'dayOfWeek' | 'month'>(groupBy);
+    const {
+        containerRef: viewStripRef, setItemRef: setViewRef, rect: viewHighlight,
+    } = useSlidingHighlight<'averages' | 'timeline'>(analysisView);
 
     const debouncedTempMin = useDebouncedValue(tempFilter.min, DEVICE_CONFIG.debounceMs);
     const debouncedTempMax = useDebouncedValue(tempFilter.max, DEVICE_CONFIG.debounceMs);
@@ -590,22 +602,28 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
             <div className="flex-1 border-t border-header-line p-4 space-y-5 overflow-y-auto">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex bg-sunken p-0.5 rounded-lg border border-line">
+                        <div ref={groupByStripRef} className="relative flex bg-sunken p-0.5 rounded-lg border border-line">
+                            {groupByHighlight && (
+                                <div aria-hidden className={`${SLIDING_HIGHLIGHT_CLASS} rounded-md bg-emerald-500/12`} style={highlightStyle(groupByHighlight)} />
+                            )}
                             {(['hour', 'dayOfWeek', 'month'] as const).map(g => (
-                                <button key={g} onClick={() => setGroupBy(g)} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                    groupBy === g ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                                <button key={g} ref={setGroupByRef(g)} onClick={() => setGroupBy(g)} className={`relative px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                    groupBy === g ? 'text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                 }`}>
                                     {g === 'hour' ? 'Hour' : g === 'dayOfWeek' ? 'Day' : 'Month'}
                                 </button>
                             ))}
                         </div>
                         <div className="hidden sm:block w-px h-5 bg-line" />
-                        <div className="flex bg-sunken p-0.5 rounded-lg border border-line">
-                            <button onClick={() => setAnalysisView('timeline')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                analysisView === 'timeline' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                        <div ref={viewStripRef} className="relative flex bg-sunken p-0.5 rounded-lg border border-line">
+                            {viewHighlight && (
+                                <div aria-hidden className={`${SLIDING_HIGHLIGHT_CLASS} rounded-md bg-emerald-500/12`} style={highlightStyle(viewHighlight)} />
+                            )}
+                            <button ref={setViewRef('timeline')} onClick={() => setAnalysisView('timeline')} className={`relative px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                analysisView === 'timeline' ? 'text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                             }`}>Timeline</button>
-                            <button onClick={() => setAnalysisView('averages')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                analysisView === 'averages' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                            <button ref={setViewRef('averages')} onClick={() => setAnalysisView('averages')} className={`relative px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                                analysisView === 'averages' ? 'text-emerald-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                             }`}>Avg</button>
                         </div>
                         <div className="flex-1 min-w-0" />

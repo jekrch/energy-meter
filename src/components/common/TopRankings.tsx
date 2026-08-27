@@ -3,6 +3,9 @@ import { DollarSign, Zap, Gauge, Flame, Snowflake, ChevronRight } from 'lucide-r
 import type { RankGranularity, RankMetric, RankingEntry } from '../../utils/rankings';
 import type { RankingsResponse } from '../../utils/rankings.worker';
 import { usePersistentState } from '../../hooks/usePersistentState';
+import {
+  useSlidingHighlight, highlightStyle, SLIDING_HIGHLIGHT_CLASS,
+} from '../../hooks/useSlidingHighlight';
 import { PulseLoader } from './PulseLoader';
 import type { DataPoint } from '../../types';
 import type { HourlyWeatherData } from '../../utils/weatherData';
@@ -68,11 +71,18 @@ export const TopRankings = React.memo(function TopRankings({
   const activeMetric: RankMetric =
     (metric === 'heat' || metric === 'cold') && !hasTemperature ? 'cost' : metric;
 
+  const granularityStrip = useSlidingHighlight<RankGranularity>(granularity);
+  const metricStrip = useSlidingHighlight<RankMetric>(activeMetric, [availableMetrics.length]);
+
   // computeRankings iterates every data point and sorts the buckets, which can
   // block the main thread for a noticeable beat on large datasets. We run it in
-  // a Web Worker so opening the modal / switching tabs stays responsive and the
-  // standard loading animation shows while results come back. `null` = loading.
+  // a Web Worker so opening the modal / switching tabs stays responsive.
+  // `rankings === null` means nothing has ever come back — only then do we show
+  // the loader. Later recomputes keep the previous list on screen (dimmed)
+  // rather than collapsing to a spinner and springing back, which made the
+  // whole modal jump around.
   const [rankings, setRankings] = useState<RankingEntry[] | null>(null);
+  const [isComputing, setIsComputing] = useState(true);
   const workerRef = useRef<Worker | null>(null);
   // Monotonic request id so out-of-order/stale worker responses are ignored.
   const requestIdRef = useRef(0);
@@ -84,7 +94,9 @@ export const TopRankings = React.memo(function TopRankings({
     });
     workerRef.current = worker;
     worker.onmessage = (e: MessageEvent<RankingsResponse>) => {
-      if (e.data.id === requestIdRef.current) setRankings(e.data.rankings);
+      if (e.data.id !== requestIdRef.current) return;
+      setRankings(e.data.rankings);
+      setIsComputing(false);
     };
     return () => {
       worker.terminate();
@@ -100,7 +112,7 @@ export const TopRankings = React.memo(function TopRankings({
 
   // Request a fresh computation whenever the dataset or selection changes.
   useEffect(() => {
-    setRankings(null);
+    setIsComputing(true);
     const id = ++requestIdRef.current;
     workerRef.current?.postMessage({
       kind: 'compute',
@@ -114,15 +126,23 @@ export const TopRankings = React.memo(function TopRankings({
   return (
     <div className="space-y-3">
       {/* Granularity selector */}
-      <div className="flex bg-sunken p-1 rounded-lg border border-line">
+      <div ref={granularityStrip.containerRef} className="relative flex bg-sunken p-1 rounded-lg border border-line">
+        {/* One highlight that slides between the buttons rather than blinking
+            off one and on the next. It sits behind them; they stay unpainted. */}
+        {granularityStrip.rect && (
+          <div
+            aria-hidden
+            className={`${SLIDING_HIGHLIGHT_CLASS} bg-surface-3 rounded-md`}
+            style={highlightStyle(granularityStrip.rect)}
+          />
+        )}
         {GRANULARITIES.map((g) => (
           <button
             key={g.id}
+            ref={granularityStrip.setItemRef(g.id)}
             onClick={() => setGranularity(g.id)}
-            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
-              granularity === g.id
-                ? 'bg-surface-3 text-slate-100'
-                : 'text-slate-400 hover:text-slate-200'
+            className={`relative flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
+              granularity === g.id ? 'text-slate-100' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             {g.label}
@@ -131,14 +151,26 @@ export const TopRankings = React.memo(function TopRankings({
       </div>
 
       {/* Metric selector */}
-      <div className="flex flex-wrap gap-1.5">
+      <div ref={metricStrip.containerRef} className="relative flex flex-wrap gap-1.5">
+        {/* These chips carry an opaque background of their own, so the sliding
+            highlight rides above them — its 10% amber tint is sheer enough to
+            read the label through, and the selected chip goes bare underneath
+            so the pair composites to the same colour it always was. */}
+        {metricStrip.rect && (
+          <div
+            aria-hidden
+            className={`${SLIDING_HIGHLIGHT_CLASS} z-10 pointer-events-none bg-amber-500/10 border border-amber-500/30 rounded-lg`}
+            style={highlightStyle(metricStrip.rect)}
+          />
+        )}
         {availableMetrics.map((m) => (
           <button
             key={m.id}
+            ref={metricStrip.setItemRef(m.id)}
             onClick={() => setMetric(m.id)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+            className={`relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               activeMetric === m.id
-                ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                ? 'bg-transparent text-amber-300 border-transparent'
                 : 'bg-surface-2 text-slate-400 border-line hover:text-slate-200 hover:border-line-2'
             }`}
           >
@@ -162,7 +194,11 @@ export const TopRankings = React.memo(function TopRankings({
           No data available for this ranking.
         </p>
       ) : (
-        <ol className="space-y-1">
+        <ol
+          className={`space-y-1 transition-opacity duration-150 ${
+            isComputing ? 'opacity-40' : 'opacity-100'
+          }`}
+        >
           {rankings.map((entry, idx) => (
             <li key={entry.periodStart}>
               <button

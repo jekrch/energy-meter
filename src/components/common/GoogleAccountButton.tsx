@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Cloud, CloudOff, ExternalLink, Loader2, LogOut, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Cloud, CloudOff, ExternalLink, Loader2, LogOut, AlertTriangle } from 'lucide-react';
 import type { GoogleAuthState } from '../../hooks/useGoogleAuth';
 import { getFolderUrl } from '../../data/driveStore';
 import { DRIVE_FOLDER_NAME } from '../../data/config';
@@ -7,6 +7,13 @@ import { DRIVE_FOLDER_NAME } from '../../data/config';
 interface GoogleAccountButtonProps {
   auth: GoogleAuthState;
 }
+
+// Asymmetric timing: the menu eases open, then leaves briskly. The enter curve
+// is the same decelerating one `rise-in` uses in index.css.
+const MENU_ENTER_MS = 180;
+const MENU_EXIT_MS = 120;
+const MENU_ENTER_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const MENU_EXIT_EASE = 'cubic-bezier(0.4, 0, 1, 1)';
 
 /**
  * Header control for the Drive connection. Signed out it is a single "Sync with
@@ -17,8 +24,33 @@ interface GoogleAccountButtonProps {
  */
 export const GoogleAccountButton: React.FC<GoogleAccountButtonProps> = ({ auth }) => {
   const [open, setOpen] = useState(false);
+  // `open` is the requested state; the menu stays mounted through its exit
+  // transition so closing fades out instead of vanishing mid-frame.
+  const [mounted, setMounted] = useState(false);
+  const [shown, setShown] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      // Two frames, not one: React flushes effects synchronously for click
+      // events, so a single rAF can still run before the browser has painted
+      // the just-mounted closed state. The transition then starts from a frame
+      // that was never shown and visibly jumps partway in.
+      let inner = 0;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => setShown(true));
+      });
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      };
+    }
+    setShown(false);
+    const timer = window.setTimeout(() => setMounted(false), MENU_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,12 +131,29 @@ export const GoogleAccountButton: React.FC<GoogleAccountButtonProps> = ({ auth }
           </span>
         )}
         {auth.expired && <AlertTriangle className="w-3.5 h-3.5" />}
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+        />
       </button>
 
-      {open && (
+      {mounted && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1.5 w-60 bg-header border border-line rounded-lg shadow-xl overflow-hidden z-50"
+          className={`absolute right-0 top-full mt-1.5 w-60 bg-surface-2 border border-line-2 rounded-lg shadow-float overflow-hidden z-50 origin-top-right motion-reduce:transition-none ${
+            shown ? '' : 'pointer-events-none'
+          }`}
+          style={{
+            opacity: shown ? 1 : 0,
+            transform: shown ? 'translateY(0) scale(1)' : 'translateY(-4px) scale(0.98)',
+            transition: shown
+              ? `opacity ${MENU_ENTER_MS}ms ${MENU_ENTER_EASE}, transform ${MENU_ENTER_MS}ms ${MENU_ENTER_EASE}`
+              : `opacity ${MENU_EXIT_MS}ms ${MENU_EXIT_EASE}, transform ${MENU_EXIT_MS}ms ${MENU_EXIT_EASE}`,
+            // Promote to its own compositor layer for the duration. Without it
+            // the scale re-rasterizes the menu's text every frame, which is
+            // what reads as choppy on a 180ms transition.
+            willChange: 'opacity, transform',
+            backfaceVisibility: 'hidden',
+          }}
         >
           <div className="px-3 py-2.5 border-b border-line">
             <p className="text-[12px] font-medium text-slate-200 truncate">{auth.user.name}</p>

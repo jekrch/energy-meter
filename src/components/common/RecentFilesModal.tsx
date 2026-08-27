@@ -1,10 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   History, X, Calendar, Hash, Loader2, Trash2, ChevronRight, Download,
   GitMerge, Check, Square, CheckSquare, AlertTriangle, Upload, FilePlus2,
   Cloud, CloudUpload, WifiOff, Pencil,
 } from 'lucide-react';
 import { Modal, type ModalHandle } from './Modal';
+import { RowActionsMenu, type RowAction } from './RowActionsMenu';
 import { MAX_DATASET_NAME, type DatasetKey, type DatasetMeta } from '../../data/datasetStore';
 import {
   MergeSheet,
@@ -12,10 +13,20 @@ import {
 } from './MergeSheet';
 import type { MergePreview } from '../../utils/mergeData';
 import { formatShortDate } from '../../utils/formatters';
+import {
+  useSlidingHighlight, highlightStyle, SLIDING_HIGHLIGHT_CLASS,
+} from '../../hooks/useSlidingHighlight';
 
 export type { MergeActions, MergeDestination } from './MergeSheet';
 
 type SourceFilter = 'all' | 'local' | 'drive';
+
+const SOURCE_TABS = [
+  { id: 'all', label: 'All' },
+  { id: 'local', label: 'This browser' },
+  { id: 'drive', label: 'Drive' },
+] as const;
+
 
 interface RecentFilesModalProps {
   entries: DatasetMeta[];
@@ -102,6 +113,20 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
     modalRef.current?.close();
   };
 
+  // Picking a file to fold into a dataset takes the user straight to the
+  // result, so the modal gets out of the way. The dismissal is routed through
+  // state and run from an effect: the row's action list is built during render,
+  // and reading the modal ref from there would be reading it mid-render.
+  const [dismissing, setDismissing] = useState(false);
+  useEffect(() => {
+    if (dismissing) modalRef.current?.close();
+  }, [dismissing]);
+
+  const handleAddFile = (key: DatasetKey, e: React.ChangeEvent<HTMLInputElement>) => {
+    onAddFile?.(key, e);
+    setDismissing(true);
+  };
+
   // Multi-select / merge state
   const mergeEnabled = Boolean(onMergePreview && onMergeConfirm);
   const [selectMode, setSelectMode] = useState(false);
@@ -115,6 +140,9 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
 
   const driveEntries = useMemo(() => entries.filter((e) => e.kind === 'drive'), [entries]);
   const showFilter = driveAvailable || driveEntries.length > 0;
+
+  // The strip is only mounted once Drive is in play, hence the dep.
+  const sourceStrip = useSlidingHighlight<SourceFilter>(filter, [showFilter]);
   const visibleEntries = useMemo(
     () => (filter === 'all' ? entries : entries.filter((e) => e.kind === filter)),
     [entries, filter],
@@ -135,7 +163,9 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   };
 
   const openSaveOptions = (key: DatasetKey) => {
-    setSaveOptionsKey((prev) => (prev === key ? null : key));
+    setRowError(null);
+    setRenamingKey(null);
+    setSaveOptionsKey(key);
     setAlsoLoad(false);
   };
 
@@ -314,19 +344,23 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
   const renderList = () => (
     <div className="overflow-y-auto flex-1 p-3 space-y-2">
       {showFilter && (
-        <div className="flex items-center gap-1 p-0.5 bg-sunken border border-line rounded-lg">
-          {([
-            { id: 'all', label: 'All' },
-            { id: 'local', label: 'This browser' },
-            { id: 'drive', label: 'Drive' },
-          ] as const).map((tab) => (
+        <div ref={sourceStrip.containerRef} className="relative flex items-center gap-1 p-0.5 bg-sunken border border-line rounded-lg">
+          {/* One highlight that travels to the picked tab rather than blinking
+              off one and on the next. */}
+          {sourceStrip.rect && (
+            <div
+              aria-hidden
+              className={`${SLIDING_HIGHLIGHT_CLASS} rounded-md bg-emerald-600/20`}
+              style={highlightStyle(sourceStrip.rect)}
+            />
+          )}
+          {SOURCE_TABS.map((tab) => (
             <button
               key={tab.id}
+              ref={sourceStrip.setItemRef(tab.id)}
               onClick={() => setFilter(tab.id)}
-              className={`flex-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                filter === tab.id
-                  ? 'bg-emerald-600/20 text-emerald-300'
-                  : 'text-slate-400 hover:text-slate-200'
+              className={`relative flex-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                filter === tab.id ? 'text-emerald-300' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {tab.label}
@@ -363,6 +397,66 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
           const isSelected = selected.has(entry.key);
           const saveOpen = saveOptionsKey === entry.key && !selectMode;
           const renaming = renamingKey === entry.key && !selectMode;
+
+          // Every secondary action, as a labelled menu item. Order runs from
+          // the routine job (add this month's file) to the rare one, with the
+          // destructive action last and behind a confirm.
+          const rowActions: RowAction[] = [];
+          if (onAddFile) {
+            rowActions.push({
+              id: 'add',
+              label: 'Add readings from a file\u2026',
+              icon: FilePlus2,
+              hint: 'Merges the file into this dataset, in place',
+              disabled: isDrive && offline,
+              disabledHint: 'Offline \u2014 reconnect to add to a Drive dataset',
+              file: {
+                accept: '.xml,.csv,.json',
+                onChange: (e) => handleAddFile(entry.key, e),
+              },
+            });
+          }
+          if (onDownload) {
+            rowActions.push({
+              id: 'save',
+              label: 'Save a copy as .json\u2026',
+              icon: Download,
+              hint: 'A smaller file you can reload, with its peak rate periods',
+              busy: isSaving,
+              onSelect: () => openSaveOptions(entry.key),
+            });
+          }
+          if (onMoveToDrive && driveAvailable && !isDrive) {
+            rowActions.push({
+              id: 'drive',
+              label: 'Move to Google Drive',
+              icon: CloudUpload,
+              hint: 'Keeps it across devices; removes it from this browser',
+              disabled: offline,
+              disabledHint: 'Offline \u2014 reconnect to move this to Drive',
+              busy: isUploading,
+              onSelect: () => void handleMoveToDrive(entry.key),
+            });
+          }
+          if (onRename) {
+            rowActions.push({
+              id: 'rename',
+              label: 'Rename\u2026',
+              icon: Pencil,
+              onSelect: () => startRename(entry),
+            });
+          }
+          rowActions.push({
+            id: 'delete',
+            label: isDrive ? 'Remove from Drive' : 'Delete',
+            icon: Trash2,
+            destructive: true,
+            confirmLabel: isDrive ? 'Remove from Drive?' : 'Delete permanently?',
+            hint: isDrive
+              ? 'Goes to your Drive trash for 30 days'
+              : 'Removes it from this browser. This can\u2019t be undone.',
+            onSelect: () => void handleDelete(entry.key),
+          });
 
           return (
             <div
@@ -426,26 +520,12 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
 
               <div className="flex-1 min-w-0 space-y-1">
                 <span className="flex items-center gap-1.5 min-w-0 w-full">
-                  {onRename && !selectMode ? (
-                    <button
-                      type="button"
-                      onClick={() => startRename(entry)}
-                      title={`Rename \u201C${entry.fileName}\u201D`}
-                      className="flex items-center gap-1.5 min-w-0 max-w-full text-left group/name"
-                    >
-                      <span className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors">
-                        {entry.fileName}
-                      </span>
-                      <Pencil className="w-3 h-3 shrink-0 text-slate-600 group-hover/name:text-emerald-300 transition-colors" />
-                    </button>
-                  ) : (
-                    <span
-                      title={entry.fileName}
-                      className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors"
-                    >
-                      {entry.fileName}
-                    </span>
-                  )}
+                  <span
+                    title={entry.fileName}
+                    className="text-sm font-medium text-slate-100 truncate group-hover:text-white transition-colors"
+                  >
+                    {entry.fileName}
+                  </span>
                 </span>
                 {/* Badges ride with the dates rather than the title: a meter
                     file name is long, and every pixel one takes off the first
@@ -484,7 +564,7 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
                     <span className="text-slate-500">Details load when you open it</span>
                   )}
                   {entry.uploadedAt > 0 && (
-                    <span className="text-slate-600">
+                    <span className="hidden sm:inline text-slate-600">
                       {formatRelativeDate(entry.uploadedAt)}
                     </span>
                   )}
@@ -492,83 +572,33 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
               </div>
               </div>
 
+              {/* Below sm the actions get a row of their own. Rather than
+                  stretch the buttons to fill it — a full-width primary per card
+                  is heavy in a list — the row's left side carries the timestamp
+                  that would otherwise wrap awkwardly onto a third metadata
+                  line, so nothing is enlarged and no gutter sits empty. */}
               {!selectMode && (
-                <div className="flex items-center justify-end gap-0.5 sm:gap-2 shrink-0 border-t border-line/70 pt-2 sm:border-t-0 sm:pt-0">
-                  {onMoveToDrive && driveAvailable && !isDrive && (
-                    <button
-                      onClick={() => handleMoveToDrive(entry.key)}
-                      disabled={isUploading || offline}
-                      title={offline
-                        ? 'Offline. Reconnect to move this to Drive'
-                        : 'Move this dataset to your Google Drive'}
-                      className="shrink-0 p-2 sm:p-1.5 text-slate-600 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-colors disabled:opacity-40"
-                      aria-label="Move to Drive"
-                    >
-                      {isUploading
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <CloudUpload className="w-3.5 h-3.5" />}
-                    </button>
+                <div className="flex items-center gap-2 shrink-0 border-t border-line/70 pt-2 sm:border-t-0 sm:pt-0">
+                  {entry.uploadedAt > 0 && (
+                    <span className="sm:hidden min-w-0 truncate text-[11px] text-slate-600">
+                      {formatRelativeDate(entry.uploadedAt)}
+                    </span>
                   )}
-
-                  {onAddFile && (
-                    <label
-                      title={isDrive && offline
-                        ? 'Offline. Reconnect to add a file to this dataset'
-                        : 'Add a file\u2019s readings to this dataset'}
-                      aria-label="Add a file to this dataset"
-                      className={`shrink-0 p-2 sm:p-1.5 rounded-lg transition-colors ${
-                        isDrive && offline
-                          ? 'text-slate-700 cursor-not-allowed'
-                          : 'text-slate-600 hover:text-emerald-300 hover:bg-emerald-500/10 cursor-pointer'
-                      }`}
-                    >
-                      <FilePlus2 className="w-3.5 h-3.5" />
-                      <input
-                        type="file"
-                        accept=".xml,.csv,.json"
-                        disabled={isDrive && offline}
-                        onChange={(e) => { onAddFile(entry.key, e); modalRef.current?.close(); }}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-
-                  {onDownload && (
-                    <button
-                      onClick={() => openSaveOptions(entry.key)}
-                      disabled={isSaving}
-                      title="Save as .json: a smaller copy you can reload, with this file's peak rate periods"
-                      className={`shrink-0 p-2 sm:p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
-                        saveOpen
-                          ? 'text-emerald-300 bg-emerald-500/10'
-                          : 'text-slate-600 hover:text-emerald-300 hover:bg-emerald-500/10'
-                      }`}
-                      aria-label="Save as JSON"
-                      aria-expanded={saveOpen}
-                    >
-                      {isSaving
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Download className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => void handleDelete(entry.key)}
+                  <div className="ml-auto shrink-0 flex items-center gap-1.5 sm:gap-2">
+                  <RowActionsMenu
+                    actions={rowActions}
+                    title={entry.fileName}
+                    subtitle={hasRange
+                      ? `${start} \u2013 ${end} \u00b7 ${entry.recordCount.toLocaleString()} readings`
+                      : isDrive ? 'In Google Drive' : 'Saved in this browser'}
+                    triggerLabel={`Actions for \u201C${entry.fileName}\u201D`}
                     disabled={isLoading}
-                    title={isDrive
-                      ? 'Remove from Drive. Goes to your Drive trash for 30 days'
-                      : 'Remove from this browser'}
-                    className="shrink-0 p-2 sm:p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-40"
-                    aria-label={isDrive ? 'Remove from Drive' : 'Delete'}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  />
 
                   <button
                     onClick={() => handleLoad(entry.key)}
                     disabled={isLoading || loadingKey !== null}
-                    aria-label="Load"
-                    className="shrink-0 flex items-center gap-1.5 ml-1 sm:ml-0 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                   >
                     {isLoading ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -577,6 +607,7 @@ export const RecentFilesModal: React.FC<RecentFilesModalProps> = ({
                     )}
                     Load
                   </button>
+                  </div>
                 </div>
               )}
               </div>
