@@ -1,9 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-    CalendarClock, Check, ChevronDown, ChevronUp, Copy, CopyPlus, Download,
-    ListOrdered, Plus, Trash2, Upload, X,
+    CalendarClock, CalendarRange, Check, ChevronDown, ChevronUp, Copy, CopyPlus,
+    Download, ListOrdered, Plus, SlidersHorizontal, Trash2, Upload, X,
 } from 'lucide-react';
 import { Modal, type ModalHandle } from './Modal';
+import {
+    useSlidingHighlight, indicatorStyle, SLIDING_HIGHLIGHT_INDICATOR_CLASS,
+} from '../../hooks/useSlidingHighlight';
 import {
     DAYS_OF_WEEK, MONTHS, PEAK_COLORS, PEAK_COLOR_KEYS, OFF_PEAK,
     type HourRange, type PeakColorKey, type PeakPeriod, type PeakRule, type PeakSchedule,
@@ -21,7 +24,9 @@ import { HOLIDAY_RULES, DEFAULT_HOLIDAY_RULES, type HolidayRuleKey } from '../..
 //
 // Layout: periods on the left, the week preview and schedule-wide options in a
 // rail on the right, so the grid that proves a rule right stays on screen while
-// the rule is being edited.
+// the rule is being edited. Below `lg` there is no room for the rail, so the
+// two become tabs rather than one scroll that buries the preview under every
+// period editor.
 
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const WEEKENDS = [0, 6];
@@ -752,9 +757,8 @@ function TemplatePicker({ onPick, onBlank }: {
     );
 
     return (
-        // Held to a readable column: the panel is sized for the two-pane editor
-        // this picker leads into, which is far wider than these cards need.
-        <div className="flex flex-col gap-3 w-full max-w-lg mx-auto">
+        // The panel narrows itself for this state, so the cards can just fill it.
+        <div className="flex flex-col gap-3">
             <p className="text-xs text-slate-500 leading-relaxed">
                 Green Button files don't include rate periods, so you have to describe them
                 here. This only shades the chart. It doesn't recalculate your bill.
@@ -803,6 +807,15 @@ function TemplatePicker({ onPick, onBlank }: {
 
 // --- Modal -------------------------------------------------------------------
 
+// Below `lg` the editor and the preview rail are tabs rather than a single
+// column, so the grid stays one tap away instead of below every period.
+type Pane = 'edit' | 'preview';
+
+const PANES = [
+    { id: 'edit', label: 'Periods', Icon: SlidersHorizontal },
+    { id: 'preview', label: 'Preview', Icon: CalendarRange },
+] as const;
+
 interface PeakRatesModalProps {
     schedule: PeakSchedule | null;
     onChange: (schedule: PeakSchedule | null) => void;
@@ -821,9 +834,19 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
     const [copied, setCopied] = useState(false);
     const [saved, setSaved] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
+    const [pane, setPane] = useState<Pane>('edit');
 
     const periods = schedule?.periods ?? [];
     const hasPeriods = periods.length > 0;
+    // With no periods there is nothing to preview, so the tab strip is gone and
+    // the editor pane is the only one there is.
+    const activePane: Pane = hasPeriods ? pane : 'edit';
+
+    // Measured rather than split evenly: the two labels are different widths.
+    // The strip only exists once there are periods, hence the dep.
+    const {
+        containerRef: paneStripRef, setItemRef: setPaneRef, rect: paneHighlight,
+    } = useSlidingHighlight<Pane>(activePane, [hasPeriods]);
 
     const nextColor = (): PeakColorKey =>
         PEAK_COLOR_KEYS[periods.length % PEAK_COLOR_KEYS.length];
@@ -894,9 +917,17 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
             // mobile browsers report `vh` against the *large* viewport, which
             // pushed the footer under the toolbar / home indicator.
             overlayClassName="pt-4 sm:pt-[8vh] pb-[max(1rem,env(safe-area-inset-bottom))] bg-black/30 backdrop-blur-[2px]"
-            // Fixed width in both states: picking a template swaps the body's
-            // contents, and the panel must not resize out from under the click.
-            panelClassName="max-w-2xl lg:max-w-5xl max-h-full"
+            // The picker is one narrow column, the editor is two panes, so the
+            // panel is sized per state rather than leaving the picker adrift in
+            // a rail-width panel. Both changes tween with the panel's own
+            // transition. Once editing, the height is pinned to the taller of
+            // the two panes so adding a rule or a period doesn't resize the
+            // whole modal — `100%` is the overlay's padded box, which is what
+            // keeps the footer off a phone's home indicator.
+            panelClassName={hasPeriods
+                ? 'max-w-2xl lg:max-w-5xl h-[min(46rem,100%)]'
+                : 'max-w-xl max-h-full'}
+            cardClassName={hasPeriods ? 'flex-1 min-h-0' : 'min-h-0'}
             ariaLabel="Peak rate periods"
         >
             {/* Header */}
@@ -906,7 +937,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                         <CalendarClock className="w-4 h-4 text-red-400" />
                     </div>
                     <div className="min-w-0">
-                        <h2 className="text-sm font-semibold text-slate-200">Peak rate periods</h2>
+                        <h2 className="text-sm font-medium text-slate-200">Peak rate periods</h2>
                         <p className="text-[11px] text-slate-500 truncate">{headerSub}</p>
                     </div>
                 </div>
@@ -920,45 +951,55 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                 </button>
             </div>
 
-            {/* Import — pinned under the header so it is visible wherever the
-                panes happen to be scrolled. */}
-            {importOpen && (
-                <div className="px-4 py-3 border-b border-line bg-surface-2 flex flex-col gap-2 shrink-0">
-                    <span className="text-xs text-slate-400">
-                        Paste a shared schedule, or the contents of an exported data file.
-                    </span>
-                    <textarea
-                        value={importText}
-                        onChange={e => { setImportText(e.target.value); setImportError(null); }}
-                        rows={4}
-                        autoFocus
-                        placeholder='{ "version": 1, "periods": [ … ] }'
-                        className="bg-sunken border border-line rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/40"
-                    />
-                    {importError && <span className="text-xs text-red-400">{importError}</span>}
-                    <div className="flex items-center gap-2">
+            {/* Pane switcher — only below `lg`, where the rail cannot sit beside
+                the editor. The indicator rides the strip's bottom rule, the same
+                bar the other modals use. */}
+            {hasPeriods && (
+                <div
+                    ref={paneStripRef}
+                    role="tablist"
+                    aria-label="Peak schedule sections"
+                    className="relative flex gap-1 px-3 bg-sunken/60 border-b border-header-line shrink-0 lg:hidden"
+                >
+                    {paneHighlight && (
+                        <div
+                            aria-hidden
+                            className={`${SLIDING_HIGHLIGHT_INDICATOR_CLASS} bg-red-400`}
+                            style={indicatorStyle(paneHighlight)}
+                        />
+                    )}
+                    {PANES.map(({ id, label, Icon }) => (
                         <button
+                            key={id}
+                            ref={setPaneRef(id)}
                             type="button"
-                            onClick={handleImport}
-                            disabled={!importText.trim()}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                            role="tab"
+                            aria-selected={activePane === id}
+                            aria-controls={`peak-pane-${id}`}
+                            onClick={() => setPane(id)}
+                            className={`relative flex items-center gap-1.5 px-3 py-2.5 rounded-t-md text-xs font-medium transition-colors ${
+                                activePane === id
+                                    ? 'text-red-300'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                            }`}
                         >
-                            Replace schedule
+                            <Icon className="w-3.5 h-3.5" />
+                            {label}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => { setImportOpen(false); setImportError(null); }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-300 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </div>
+                    ))}
                 </div>
             )}
 
             {/* Body: periods on the left, preview + schedule options on the right */}
-            <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-                <div className="flex-1 min-w-0 lg:overflow-y-auto p-4 flex flex-col gap-3">
+            <div className="flex-1 min-h-0 flex overflow-hidden">
+                <div
+                    id="peak-pane-edit"
+                    role="tabpanel"
+                    aria-label="Periods"
+                    className={`flex-1 min-w-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-4 flex-col gap-3 ${
+                        activePane === 'edit' ? 'flex' : 'hidden lg:flex'
+                    }`}
+                >
                     {!hasPeriods && (
                         <TemplatePicker
                             onPick={onChange}
@@ -1013,7 +1054,14 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                 </div>
 
                 {schedule && hasPeriods && (
-                    <aside className="shrink-0 lg:w-[22rem] border-t border-line lg:border-t-0 lg:border-l lg:overflow-y-auto p-4 flex flex-col gap-4 bg-surface-2/40">
+                    <aside
+                        id="peak-pane-preview"
+                        role="tabpanel"
+                        aria-label="Preview"
+                        className={`min-w-0 lg:shrink-0 lg:w-[22rem] lg:border-l border-line overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-4 flex-col gap-4 bg-surface-2/40 ${
+                            activePane === 'preview' ? 'flex flex-1 lg:flex-none' : 'hidden lg:flex'
+                        }`}
+                    >
                         <SchedulePreview schedule={schedule} />
                         <div className="border-t border-line pt-4">
                             <HolidaySettings schedule={schedule} update={update} />
@@ -1021,6 +1069,42 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                     </aside>
                 )}
             </div>
+
+            {/* Import — pinned above the footer, so it opens next to the button
+                that toggles it and stays put wherever the panes are scrolled. */}
+            {importOpen && (
+                <div className="px-4 py-3 border-t border-line bg-surface-2 flex flex-col gap-2 shrink-0">
+                    <span className="text-xs text-slate-400">
+                        Paste a shared schedule, or the contents of an exported data file.
+                    </span>
+                    <textarea
+                        value={importText}
+                        onChange={e => { setImportText(e.target.value); setImportError(null); }}
+                        rows={4}
+                        autoFocus
+                        placeholder='{ "version": 1, "periods": [ … ] }'
+                        className="bg-sunken border border-line rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/40"
+                    />
+                    {importError && <span className="text-xs text-red-400">{importError}</span>}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleImport}
+                            disabled={!importText.trim()}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                            Replace schedule
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setImportOpen(false); setImportError(null); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Footer — the two groups wrap onto separate lines when they cannot
                 share one, rather than overflowing off the right on a phone. */}
@@ -1046,7 +1130,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-300 transition-colors"
                         >
                             {copied ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 shrink-0" />}
-                            {copied ? 'Copied' : 'Copy JSON'}
+                            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy JSON'}</span>
                         </button>
                     )}
                     {schedule && onSaveDataFile && (
@@ -1072,7 +1156,7 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                                     : 'text-slate-500 hover:text-red-400'
                             }`}
                         >
-                            {confirmClear ? 'Clear it?' : 'Clear schedule'}
+                            {confirmClear ? 'Clear it?' : 'Clear'}
                         </button>
                     )}
                     <button
