@@ -73,18 +73,12 @@
       ]
     }
     </script>
-    
-    <!-- Analytics. Pinned with SRI: this is third-party code running on a page
-         that holds a Google Drive token, so the browser refuses it unless the
-         bytes are the ones reviewed here. Blocked analytics is harmless — the
-         app never depends on it. Refresh the hash after upgrading Umami:
-           curl -s https://analytics.jacobkrch.com/script.js | openssl dgst -sha384 -binary | openssl base64 -A
-         The Content-Security-Policy is injected at build time; see vite.config.ts. -->
     <script defer src="https://analytics.jacobkrch.com/script.js"
       integrity="sha384-6PHtXKae10+dZuA/fcmjkSTDco+NPBE5fZ4eS/Em2lVIsS6FdDZIgs06MBJLEcSW"
       crossorigin="anonymous"
-      data-website-id="1dd27276-2300-4ae2-8ba6-ecfab4ee4a38"></script>
-    <script type="module" crossorigin src="/assets/index-CZXnBSTX.js"></script>
+      data-website-id="1dd27276-2300-4ae2-8ba6-ecfab4ee4a38"
+      data-exclude-hash="true"></script>
+    <script type="module" crossorigin src="/assets/index-CX2vJrEk.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CWuEypUF.css">
   </head>
   <body>
