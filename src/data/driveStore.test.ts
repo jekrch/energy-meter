@@ -15,6 +15,10 @@ interface FakeFile extends DriveFile {
 const files = new Map<string, FakeFile>();
 let nextId = 1;
 let ensureFolderCalls = 0;
+// Null stands for an account that never saved anything, so the folder this app
+// would otherwise create does not exist yet.
+let existingFolderId: string | null = 'folder-1';
+const trashed: string[] = [];
 const requests: string[] = [];
 
 function stamp(file: FakeFile): FakeFile {
@@ -31,7 +35,8 @@ mock.module('./driveClient', () => ({
   DriveAuthError: class DriveAuthError extends Error {},
   FOLDER_MIME: 'application/vnd.google-apps.folder',
   quote: (v: string) => `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`,
-  ensureFolder: async () => { ensureFolderCalls++; return 'folder-1'; },
+  ensureFolder: async () => { ensureFolderCalls++; existingFolderId = 'folder-1'; return existingFolderId; },
+  findFolder: async () => existingFolderId,
   folderUrl: (id: string) => `https://drive.google.com/drive/folders/${id}`,
   listFiles: async () => { requests.push('list'); return [...files.values()]; },
   getFileMeta: async (id: string) => {
@@ -53,13 +58,19 @@ mock.module('./driveClient', () => ({
     return { ...stamp(file) };
   },
   updateFileMetadata: async () => ({ id: 'x', name: 'x' }),
-  trashFile: async (id: string) => { files.delete(id); },
+  trashFile: async (id: string) => {
+    trashed.push(id);
+    if (id === existingFolderId) existingFolderId = null;
+    files.delete(id);
+  },
   deleteFile: async (id: string) => { files.delete(id); },
 }));
 
-const { driveStore, buildAppProperties, fitProperty, toDatasetMeta, canCompress, resetDriveState } =
-  await import('./driveStore');
-const { DatasetConflictError } = await import('./datasetStore');
+const {
+  driveStore, buildAppProperties, deleteAllDriveData, fitProperty, toDatasetMeta, canCompress,
+  resetDriveState,
+} = await import('./driveStore');
+const { DatasetConflictError, driveId } = await import('./datasetStore');
 
 const data: DataPoint[] = [
   { timestamp: 1735689600, value: 412, cost: 5100, duration: 900 },
@@ -83,6 +94,8 @@ beforeEach(async () => {
   files.clear();
   nextId = 1;
   ensureFolderCalls = 0;
+  existingFolderId = 'folder-1';
+  trashed.length = 0;
   requests.length = 0;
   await resetDriveState();
 });
@@ -445,6 +458,48 @@ describe('driveStore — deleting', () => {
     await driveStore.delete(meta!.key);
     expect(files.size).toBe(0);
     expect(await driveStore.list()).toHaveLength(0);
+  });
+});
+
+describe('deleteAllDriveData', () => {
+  it('trashes every dataset and the folder with them', async () => {
+    const one = await driveStore.save('first', data, 'RAW');
+    const two = await driveStore.save('second', data, 'RAW');
+
+    expect(await deleteAllDriveData()).toBe(2);
+    expect(files.size).toBe(0);
+    // The folder goes last, so a failure partway through leaves the rest of the
+    // datasets where the user can still see them.
+    expect(trashed).toEqual([driveId(one!.key)!, driveId(two!.key)!, 'folder-1']);
+  });
+
+  it('drops the cached copies of what it deleted', async () => {
+    const meta = await driveStore.save('cached', data, 'RAW');
+    const fileId = driveId(meta!.key)!;
+    const stored = { ...files.get(fileId)! };
+    // Saving seeds the cache, so reopening it downloads nothing.
+    requests.length = 0;
+    await driveStore.load(meta!.key);
+    expect(requests.filter((r) => r.startsWith('download:'))).toHaveLength(0);
+
+    await deleteAllDriveData();
+
+    // The same file, restored from Drive's trash and found again by a later
+    // sign-in: its readings have to come off the wire, because nothing of that
+    // account was left on this disk.
+    files.set(fileId, stored);
+    existingFolderId = 'folder-1';
+    requests.length = 0;
+    await driveStore.load(meta!.key);
+    expect(requests.filter((r) => r.startsWith('download:'))).toHaveLength(1);
+  });
+
+  it('does not conjure a folder for an account that never saved anything', async () => {
+    existingFolderId = null;
+
+    expect(await deleteAllDriveData()).toBe(0);
+    expect(ensureFolderCalls).toBe(0);
+    expect(trashed).toEqual([]);
   });
 });
 

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-    CalendarClock, CalendarRange, Check, ChevronDown, ChevronUp, Copy, CopyPlus,
-    Download, ListOrdered, Plus, SlidersHorizontal, Trash2, Upload, X,
+    CalendarClock, CalendarOff, CalendarRange, Check, ChevronDown, ChevronUp,
+    Copy, CopyPlus, Download, ListOrdered, Plus, SlidersHorizontal, Trash2,
+    Upload, X,
 } from 'lucide-react';
 import { Modal, type ModalHandle } from './Modal';
 import {
@@ -118,6 +119,50 @@ function IconButton({ onClick, title, disabled, danger, children }: {
         >
             {children}
         </button>
+    );
+}
+
+// A boolean rendered as a track-and-thumb switch, matching the one in the
+// export modal. The native input carries the semantics and the keyboard; the
+// two spans after it are what actually get painted, driven off `peer-checked`.
+function Switch({ checked, onChange, children }: {
+    checked: boolean; onChange: (checked: boolean) => void; children: React.ReactNode;
+}) {
+    return (
+        <label className="group flex items-center gap-2.5 cursor-pointer">
+            <span className="relative shrink-0 flex">
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={e => onChange(e.target.checked)}
+                    className="peer sr-only"
+                />
+                <span className="block w-8 h-[18px] rounded-full bg-surface-3 transition-colors peer-checked:bg-emerald-600/80 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2" />
+                <span className="pointer-events-none absolute top-px left-px w-4 h-4 rounded-full bg-slate-400 shadow-sm transition-[transform,background-color] duration-150 peer-checked:translate-x-[14px] peer-checked:bg-white" />
+            </span>
+            <span className="text-sm text-slate-300 group-hover:text-slate-200 transition-colors">
+                {children}
+            </span>
+        </label>
+    );
+}
+
+// A checkbox drawn as a filled tick box rather than the browser's `accent-*`
+// default, so it matches the column list in the export modal. The whole row is
+// the hit target.
+function CheckRow({ checked, onChange, children }: {
+    checked: boolean; onChange: () => void; children: React.ReactNode;
+}) {
+    return (
+        <label className="group flex items-center gap-2.5 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer hover:bg-white/5 transition-colors">
+            <input type="checkbox" checked={checked} onChange={onChange} className="peer sr-only" />
+            <span className="w-4 h-4 shrink-0 grid place-items-center rounded border border-line-2 text-transparent transition-colors peer-checked:bg-emerald-500/20 peer-checked:border-emerald-500/50 peer-checked:text-emerald-400 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40">
+                <Check className="w-3 h-3" strokeWidth={3} />
+            </span>
+            <span className="text-xs text-slate-500 transition-colors group-hover:text-slate-300 peer-checked:text-slate-300">
+                {children}
+            </span>
+        </label>
     );
 }
 
@@ -648,7 +693,10 @@ function HolidaySettings({ schedule, update }: {
     schedule: PeakSchedule;
     update: (patch: Partial<PeakSchedule>) => void;
 }) {
-    const [open, setOpen] = useState(false);
+    // Open by default: this is a tab of its own below `lg`, and a tab whose
+    // whole content sits behind a second disclosure is a dead end. The rail
+    // scrolls, so the desktop cost is a longer column rather than a clipped one.
+    const [open, setOpen] = useState(true);
 
     const toggleHoliday = (key: HolidayRuleKey) => {
         const current = schedule.holidayRules;
@@ -664,15 +712,12 @@ function HolidaySettings({ schedule, update }: {
         <div className="flex flex-col gap-2">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Holidays</span>
 
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                    type="checkbox"
-                    checked={schedule.observeHolidays}
-                    onChange={e => update({ observeHolidays: e.target.checked })}
-                    className="accent-emerald-500"
-                />
+            <Switch
+                checked={schedule.observeHolidays}
+                onChange={observeHolidays => update({ observeHolidays })}
+            >
                 Treat holidays as off-peak
-            </label>
+            </Switch>
 
             {schedule.observeHolidays && (
                 <>
@@ -709,17 +754,15 @@ function HolidaySettings({ schedule, update }: {
                                 </Shortcut>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-y-1">
+                            <div className="flex flex-col">
                                 {HOLIDAY_RULES.map(({ key, name }) => (
-                                    <label key={key} className="flex items-center gap-2 text-xs text-slate-400">
-                                        <input
-                                            type="checkbox"
-                                            checked={schedule.holidayRules.includes(key)}
-                                            onChange={() => toggleHoliday(key)}
-                                            className="accent-emerald-500"
-                                        />
+                                    <CheckRow
+                                        key={key}
+                                        checked={schedule.holidayRules.includes(key)}
+                                        onChange={() => toggleHoliday(key)}
+                                    >
                                         {name}
-                                    </label>
+                                    </CheckRow>
                                 ))}
                             </div>
 
@@ -807,13 +850,16 @@ function TemplatePicker({ onPick, onBlank }: {
 
 // --- Modal -------------------------------------------------------------------
 
-// Below `lg` the editor and the preview rail are tabs rather than a single
-// column, so the grid stays one tap away instead of below every period.
-type Pane = 'edit' | 'preview';
+// Below `lg` the editor and the two halves of the rail are tabs rather than a
+// single column, so the grid stays one tap away instead of below every period
+// — and the holiday settings are named on the bar rather than buried under the
+// preview, which is the only place the rail has room to put them.
+type Pane = 'edit' | 'preview' | 'holidays';
 
 const PANES = [
     { id: 'edit', label: 'Periods', Icon: SlidersHorizontal },
     { id: 'preview', label: 'Preview', Icon: CalendarRange },
+    { id: 'holidays', label: 'Holidays', Icon: CalendarOff },
 ] as const;
 
 interface PeakRatesModalProps {
@@ -1053,17 +1099,31 @@ export function PeakRatesModal({ schedule, onChange, onClose, onSaveDataFile }: 
                     )}
                 </div>
 
+                {/* The rail. At `lg` it is one column holding both blocks with a
+                    rule between them; below that each block is its own tab, so
+                    only one is mounted-visible at a time and the divider goes. */}
                 {schedule && hasPeriods && (
                     <aside
-                        id="peak-pane-preview"
-                        role="tabpanel"
-                        aria-label="Preview"
                         className={`min-w-0 lg:shrink-0 lg:w-[22rem] lg:border-l border-line overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-4 flex-col gap-4 bg-surface-2/40 ${
-                            activePane === 'preview' ? 'flex flex-1 lg:flex-none' : 'hidden lg:flex'
+                            activePane === 'edit' ? 'hidden lg:flex' : 'flex flex-1 lg:flex-none'
                         }`}
                     >
-                        <SchedulePreview schedule={schedule} />
-                        <div className="border-t border-line pt-4">
+                        <div
+                            id="peak-pane-preview"
+                            role="tabpanel"
+                            aria-label="Preview"
+                            className={activePane === 'preview' ? '' : 'hidden lg:block'}
+                        >
+                            <SchedulePreview schedule={schedule} />
+                        </div>
+                        <div
+                            id="peak-pane-holidays"
+                            role="tabpanel"
+                            aria-label="Holidays"
+                            className={`lg:border-t lg:border-line lg:pt-4 ${
+                                activePane === 'holidays' ? '' : 'hidden lg:block'
+                            }`}
+                        >
                             <HolidaySettings schedule={schedule} update={update} />
                         </div>
                     </aside>

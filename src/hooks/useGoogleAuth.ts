@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AUTH_CHANGED_EVENT, completeRedirectSignIn, getAccessToken, getSessionUser,
-  hasRedirectResult, signIn, signOut, type AuthUser,
+  hasRedirectResult, revokeAccess, signIn, signOut, type AuthUser,
 } from '../data/googleAuth';
 // Imported for its side effect: the Drive store registers its own teardown with
 // `onAuthReset` at import, and nothing else in this hook's tree pulls it in.
@@ -33,6 +33,12 @@ export interface GoogleAuthState {
   justSignedIn: boolean;
   signIn: () => Promise<void>;
   signOut: () => void;
+  /**
+   * Hand the grant back to Google and end the session — the teardown behind the
+   * header menu, as opposed to the everyday `signOut`. Resolves to whether
+   * Google acknowledged it; either way the tab ends up signed out.
+   */
+  disconnect: () => Promise<boolean>;
   dismissError: () => void;
 }
 
@@ -107,6 +113,14 @@ export function useGoogleAuth(): GoogleAuthState {
     signOut();
   }, []);
 
+  const doDisconnect = useCallback(async () => {
+    setError(null);
+    setJustSignedIn(false);
+    // Same teardown as a sign-out — `revokeAccess` ends the session through the
+    // same path — with the grant on the Google account given back as well.
+    return revokeAccess();
+  }, []);
+
   return {
     user,
     ready: Boolean(user && token),
@@ -117,6 +131,7 @@ export function useGoogleAuth(): GoogleAuthState {
     justSignedIn,
     signIn: doSignIn,
     signOut: doSignOut,
+    disconnect: doDisconnect,
     dismissError: () => setError(null),
   };
 }

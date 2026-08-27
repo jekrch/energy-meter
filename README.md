@@ -127,6 +127,11 @@ is static files served from a CDN.
   datasets there is the point of connecting an account. Signed out, no Google
   service is contacted at all and imports stay in this browser. You can delete
   a dataset from Drive at any time, from the app or from Drive itself.
+- **One way out.** *Delete data & disconnect*, in the account menu, is the whole
+  exit in one click: your datasets and the `GB Energy Meter` folder go to your
+  Drive trash (restorable for 30 days), cached copies in this browser are
+  erased, the grant is revoked with Google, and you're signed out. Untick the
+  deletion to keep the files and only disconnect.
 - **No analytics on your data.** The app collects nothing about you or your
   readings.
 

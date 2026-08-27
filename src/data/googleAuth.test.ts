@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import '../test/happyDom';
 import {
   completeRedirectSignIn, getAccessToken, getSessionUser, hasRedirectResult,
-  isSessionExpired, onAuthReset, setReturnStateProvider, signIn, signOut, trySilentRefresh,
+  isSessionExpired, onAuthReset, revokeAccess, setReturnStateProvider, signIn, signOut,
+  trySilentRefresh,
 } from './googleAuth';
 
 // Google Identity Services and Drive's `about.get` are both stubbed, because
@@ -322,6 +323,54 @@ describe('redirect sign-in', () => {
     expect(await trySilentRefresh()).toBeNull();
     expect(getSessionUser()?.email).toBe('a@example.com');
     expect(resets).toBe(0);
+  });
+});
+
+/** Age the stored session out, the way an hour passing would. */
+function expireSession(): void {
+  const raw = sessionStorage.getItem('energy-meter:gauth');
+  if (!raw) throw new Error('no session to expire');
+  sessionStorage.setItem(
+    'energy-meter:gauth',
+    JSON.stringify({ ...(JSON.parse(raw) as object), exp: Date.now() - 1000 }),
+  );
+}
+
+describe('revokeAccess', () => {
+  it('hands the token back to Google and ends the session', async () => {
+    await signIn();
+
+    expect(await revokeAccess()).toBe(true);
+    expect(revoked).toEqual(['tok-a']);
+    expect(getSessionUser()).toBeNull();
+    expect(getAccessToken()).toBeNull();
+    expect(resets).toBe(1);
+  });
+
+  // A session that only lapsed still has a grant listed on the account, and on
+  // a pointing device the token to revoke it with is one silent request away.
+  it('renews a lapsed token rather than leaving the grant standing', async () => {
+    await signIn();
+    expireSession();
+    expect(getAccessToken()).toBeNull();
+
+    grant = { token: 'tok-fresh', scope: DRIVE_SCOPE };
+    expect(await revokeAccess()).toBe(true);
+    expect(revoked).toEqual(['tok-fresh']);
+    expect(getSessionUser()).toBeNull();
+  });
+
+  // Nothing to revoke is not a reason to leave the user signed in to the thing
+  // they just asked to be rid of.
+  it('still signs out when no token can be had', async () => {
+    await signIn();
+    expireSession();
+    grant = null;
+
+    expect(await revokeAccess()).toBe(false);
+    expect(revoked).toEqual([]);
+    expect(getSessionUser()).toBeNull();
+    expect(resets).toBeGreaterThan(0);
   });
 });
 

@@ -141,16 +141,21 @@ export default function App() {
   const pendingScheduleRef = useRef<{ key: DatasetKey; patch: DatasetProvenance } | null>(null);
   const scheduleTimerRef = useRef<number | null>(null);
 
-  const flushScheduleWrite = useCallback(() => {
+  // Drop a debounced write instead of sending it. Used when its target is gone:
+  // flushing would rewrite a file that has just been deleted.
+  const discardScheduleWrite = useCallback(() => {
     if (scheduleTimerRef.current !== null) {
       window.clearTimeout(scheduleTimerRef.current);
       scheduleTimerRef.current = null;
     }
-    const pending = pendingScheduleRef.current;
-    if (!pending) return;
     pendingScheduleRef.current = null;
-    void patchProvenance(pending.key, pending.patch);
-  }, [patchProvenance]);
+  }, []);
+
+  const flushScheduleWrite = useCallback(() => {
+    const pending = pendingScheduleRef.current;
+    discardScheduleWrite();
+    if (pending) void patchProvenance(pending.key, pending.patch);
+  }, [patchProvenance, discardScheduleWrite]);
 
   // Closing the rate editor or leaving the page must not drop an edit that is
   // still inside the debounce window.
@@ -640,6 +645,19 @@ export default function App() {
     trackHistoryEntry(null);
   }, [historyEntries.length, auth.ready, openLibrary, reset, applyPeakSchedule, trackHistoryEntry]);
 
+  // The Drive teardown deleted the files themselves, so a dataset opened from
+  // there is no longer anywhere. Clear the screen rather than leave a chart of
+  // readings the user has just thrown away, and drop the pending schedule write
+  // that was bound for one of them. A local dataset stays put: the Drive exit
+  // says nothing about it.
+  const handleDriveDataDeleted = useCallback(() => {
+    if (keyKind(datasetKeyRef.current) !== 'drive') return;
+    discardScheduleWrite();
+    reset();
+    applyPeakSchedule(null);
+    trackHistoryEntry(null);
+  }, [discardScheduleWrite, reset, applyPeakSchedule, trackHistoryEntry]);
+
   // Bring a stored entry into the app: its readings, the schedule it was saved
   // with, and the history row that later schedule edits are written back to.
   const adoptHistoryEntry = useCallback(({ meta, data }: DatasetRecord) => {
@@ -981,7 +999,7 @@ export default function App() {
               </div>
             </div>
             <div className="shrink-0 flex items-center gap-2">
-              <GoogleAccountButton auth={auth} />
+              <GoogleAccountButton auth={auth} onDataDeleted={handleDriveDataDeleted} />
               {rawData && (
                 <button
                   onClick={openLibraryOrReset}

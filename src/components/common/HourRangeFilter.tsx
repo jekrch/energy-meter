@@ -188,8 +188,8 @@ function RangeSlider({ range, onChange }: RangeSliderProps) {
               handlePointerDown(e, 'start');
             }}
           >
-            <div className={`w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-transform ${
-              isDragging === 'start' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            <div className={`w-4 h-4 rounded-full shadow-lg border-2 transition-[transform,background-color] ${
+              isDragging === 'start' ? 'bg-white border-emerald-400 scale-125' : 'bg-slate-300 border-emerald-500'
             }`} />
           </div>
 
@@ -204,8 +204,8 @@ function RangeSlider({ range, onChange }: RangeSliderProps) {
               handlePointerDown(e, 'end');
             }}
           >
-            <div className={`w-4 h-4 rounded-full bg-white shadow-lg border-2 transition-transform ${
-              isDragging === 'end' ? 'border-emerald-400 scale-125' : 'border-emerald-500'
+            <div className={`w-4 h-4 rounded-full shadow-lg border-2 transition-[transform,background-color] ${
+              isDragging === 'end' ? 'bg-white border-emerald-400 scale-125' : 'bg-slate-300 border-emerald-500'
             }`} />
           </div>
         </div>

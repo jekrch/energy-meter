@@ -104,14 +104,23 @@ async function createFolder(name: string, parentId?: string): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
-/** Find a folder by name (optionally under a parent), creating it if absent. */
-export async function ensureFolder(name: string, parentId?: string): Promise<string> {
+/**
+ * Find a folder by name (optionally under a parent) without creating it. The
+ * teardown path needs this: `ensureFolder` would conjure a folder for an
+ * account that never saved anything, only to trash it a moment later.
+ */
+export async function findFolder(name: string, parentId?: string): Promise<string | null> {
   const parentClause = parentId ? ` and ${quote(parentId)} in parents` : '';
   const found = await listFiles(
     `name=${quote(name)} and mimeType=${quote(FOLDER_MIME)} and trashed=false${parentClause}`,
     'id,name',
   );
-  return found[0]?.id ?? createFolder(name, parentId);
+  return found[0]?.id ?? null;
+}
+
+/** Find a folder by name (optionally under a parent), creating it if absent. */
+export async function ensureFolder(name: string, parentId?: string): Promise<string> {
+  return (await findFolder(name, parentId)) ?? createFolder(name, parentId);
 }
 
 /** Current server-side metadata for one file — the conflict check reads this. */

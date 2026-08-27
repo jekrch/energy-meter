@@ -5,8 +5,8 @@ import {
 } from '../utils/nativeFormat';
 import { DRIVE_FOLDER_NAME } from './config';
 import {
-  createFile, downloadBlob, ensureFolder, folderUrl, getFileMeta, listFiles,
-  quote, trashFile, updateFile, type DriveFile, type DriveFileMetadata,
+  createFile, downloadBlob, ensureFolder, findFolder, folderUrl, getFileMeta,
+  listFiles, quote, trashFile, updateFile, type DriveFile, type DriveFileMetadata,
 } from './driveClient';
 import { indexedDbCache, loadWithCache } from './driveCache';
 import { onAuthReset } from './googleAuth';
@@ -456,3 +456,42 @@ export const driveStore: DatasetStore = {
     });
   },
 };
+
+/**
+ * Remove everything this app put in the user's Drive: every dataset in the
+ * folder, then the folder itself. `resetDriveState` only forgets the local
+ * half, so the header menu's teardown calls this first.
+ *
+ * Trashed rather than erased, like a single "Remove from Drive": a mis-click
+ * here costs years of merged history, and Drive's trash gives it back for 30
+ * days. That is the user's own trash, so it survives the revoke that follows.
+ *
+ * Scoped to the folder. `drive.file` would narrow a bare `files.list` to what
+ * this app created, catching a dataset the user moved elsewhere too, but a bulk
+ * delete should not rest on a scope subtlety: what goes is what the
+ * confirmation named.
+ *
+ * Runs on the write chain, so it cannot interleave with a debounced schedule
+ * write-back. Returns how many datasets were removed.
+ */
+export async function deleteAllDriveData(): Promise<number> {
+  return enqueue(async () => {
+    // Found, not ensured: an account that never saved anything must not have a
+    // folder conjured for it here only to be trashed in the next breath.
+    const folderId = await findFolder(DRIVE_FOLDER_NAME);
+    if (!folderId) {
+      await resetDriveState();
+      return 0;
+    }
+
+    const files = await listFiles(`${quote(folderId)} in parents and trashed=false`, 'id');
+    // Files first, folder last: a failure partway through then leaves the rest
+    // where the user can still see them, and a retry finds them again. Trashing
+    // the folder first would strand them inside a trashed parent.
+    for (const file of files) await trashFile(file.id);
+    await trashFile(folderId);
+
+    await resetDriveState();
+    return files.length;
+  });
+}

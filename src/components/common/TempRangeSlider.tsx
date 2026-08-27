@@ -182,8 +182,8 @@ export const TempRangeSlider = React.memo(function TempRangeSlider({
                     onPointerUp={handlePointerUp}
                     onPointerCancel={handlePointerUp}
                 >
-                    <div className={`w-4 h-4 rounded-full bg-slate-100 border-2 border-slate-400 shadow-lg
-                        transition-transform
+                    <div className={`w-4 h-4 rounded-full bg-slate-300 border-2 border-slate-400 shadow-lg
+                        transition-[transform,background-color]
                         ${isDragging && dragTarget === 'min' ? 'scale-110 border-slate-300 bg-white' : ''}`} 
                     />
                 </div>
@@ -198,8 +198,8 @@ export const TempRangeSlider = React.memo(function TempRangeSlider({
                     onPointerUp={handlePointerUp}
                     onPointerCancel={handlePointerUp}
                 >
-                    <div className={`w-4 h-4 rounded-full bg-slate-100 border-2 border-slate-400 shadow-lg
-                        transition-transform
+                    <div className={`w-4 h-4 rounded-full bg-slate-300 border-2 border-slate-400 shadow-lg
+                        transition-[transform,background-color]
                         ${isDragging && dragTarget === 'max' ? 'scale-110 border-slate-300 bg-white' : ''}`} 
                     />
                 </div>

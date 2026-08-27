@@ -36,6 +36,10 @@ interface AuthSession extends AuthUser {
 const STORE_KEY = 'energy-meter:gauth';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
+// How long to wait on GIS's callback-only revoke before giving up on hearing
+// back. The token is dropped locally regardless.
+const REVOKE_TIMEOUT_MS = 8_000;
 // The leg of a redirect sign-in that has to outlive the navigation.
 const PENDING_KEY = 'energy-meter:gauth:redirect';
 // A sign-in abandoned on Google's page is not one to honour on return much
@@ -92,7 +96,8 @@ interface GisOAuth2 {
     callback: (resp: TokenResponse) => void;
     error_callback?: (err: { type?: string }) => void;
   }) => TokenClient;
-  // GIS offers this; see `signOut` for why nothing here calls it.
+  // Used only by `revokeAccess` — the deliberate exit. See `signOut` for why
+  // the everyday one leaves the grant alone.
   revoke?: (token: string, done?: () => void) => void;
 }
 
@@ -499,6 +504,69 @@ export async function trySilentRefresh(): Promise<string | null> {
 }
 
 /**
+ * Hand the token back to Google and end the session: the deliberate exit, where
+ * the app disappears from the account's third-party apps list, as opposed to
+ * the everyday `signOut`.
+ *
+ * Returns whether Google acknowledged it. False is not a failure to act on: the
+ * local session goes either way, and the caller points at the account's
+ * connections page rather than leaving the user signed in to what they just
+ * asked to be rid of.
+ */
+export async function revokeAccess(): Promise<boolean> {
+  // A lapsed session still has a grant worth revoking, and on a pointing device
+  // the refresh is silent — so try for a token rather than reporting nothing to
+  // revoke to a user who can plainly see the app listed on their account.
+  const token = getAccessToken() ?? (await trySilentRefresh());
+  if (!token) {
+    endSession();
+    return false;
+  }
+  try {
+    return await revokeToken(token);
+  } finally {
+    endSession();
+  }
+}
+
+/**
+ * GIS's own revoke, with the bare OAuth endpoint behind it. The callback form
+ * has no error channel and no documented timeout, so it races a deadline: a
+ * revoke that never calls back must not strand the user in a modal spinner.
+ */
+async function revokeToken(token: string): Promise<boolean> {
+  try {
+    const oauth2 = await loadGis();
+    if (oauth2.revoke) {
+      return await new Promise<boolean>((resolve) => {
+        const timer = window.setTimeout(() => resolve(false), REVOKE_TIMEOUT_MS);
+        oauth2.revoke!(token, () => {
+          window.clearTimeout(timer);
+          resolve(true);
+        });
+      });
+    }
+  } catch {
+    // GIS blocked or unreachable — the endpoint below is the same operation.
+  }
+  try {
+    // `no-cors`: the response is opaque and unreadable, but the request is sent
+    // as a simple form POST, which is all the revoke endpoint needs. Nothing
+    // here can distinguish success from failure, so this reports the weaker
+    // claim — the caller shows the connections page either way.
+    await fetch(REVOKE_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    });
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+/**
  * Sign out of this browser. Deliberately local: the session and everything
  * derived from it go, and the grant on the Google account stays.
  *
@@ -509,7 +577,8 @@ export async function trySilentRefresh(): Promise<string | null> {
  * And it buys nothing: no token survives sign-out to be revoked. The access
  * token lives in sessionStorage for a tab, there is no refresh token (implicit
  * grant, no backend), and what remains is an entry in the account's third-party
- * apps list that the user can remove there whenever they mean to.
+ * apps list, which the user can remove whenever they mean to — from Google, or
+ * from the header menu's teardown, which calls `revokeAccess` instead.
  */
 export function signOut(): void {
   endSession();

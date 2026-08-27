@@ -22,11 +22,13 @@ interface StubTokenConfig {
 
 let grant: { token: string; scope?: string } | null = null;
 let identity: string | null = null;
+let revoked: string[] = [];
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
   grant = { token: 'tok-a', scope: DRIVE_SCOPE };
   identity = 'a@example.com';
+  revoked = [];
 
   (window as unknown as { google: unknown }).google = {
     accounts: {
@@ -37,7 +39,7 @@ beforeEach(() => {
             else config.callback({ access_token: grant.token, expires_in: 3600, scope: grant.scope });
           },
         }),
-        revoke: (_token: string, done?: () => void) => { done?.(); },
+        revoke: (token: string, done?: () => void) => { revoked.push(token); done?.(); },
       },
     },
   };
@@ -200,6 +202,25 @@ describe('useGoogleAuth signing out', () => {
 
     await act(async () => { result.current.signOut(); await advanceTime(0); });
     expect(result.current.error).toBeNull();
+  });
+});
+
+describe('useGoogleAuth disconnecting', () => {
+  it('gives the grant back and leaves the tab signed out', async () => {
+    const { result } = await mountHook();
+    await act(async () => { await result.current.signIn(); });
+
+    let acknowledged: boolean | undefined;
+    await act(async () => {
+      acknowledged = await result.current.disconnect();
+      await advanceTime(0);
+    });
+
+    expect(acknowledged).toBe(true);
+    expect(revoked).toEqual(['tok-a']);
+    expect(result.current.user).toBeNull();
+    expect(result.current.ready).toBe(false);
+    expect(result.current.justSignedIn).toBe(false);
   });
 });
 
