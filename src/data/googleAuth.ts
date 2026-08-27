@@ -88,9 +88,11 @@ interface GisOAuth2 {
     client_id: string;
     scope: string;
     prompt?: string;
+    hint?: string;
     callback: (resp: TokenResponse) => void;
     error_callback?: (err: { type?: string }) => void;
   }) => TokenClient;
+  // GIS offers this; see `signOut` for why nothing here calls it.
   revoke?: (token: string, done?: () => void) => void;
 }
 
@@ -174,7 +176,15 @@ interface GrantedToken {
   scope: string | undefined;
 }
 
-function requestToken(prompt: string): Promise<GrantedToken> {
+/**
+ * `prompt` is the whole of the difference between the flows: `''` is "ask
+ * Google for a token and show nothing", which is what a silent refresh wants
+ * and exactly what a signed-out user must not get — with one authorized account
+ * it hands back a token for it instantly, so signing out and in again lands
+ * back in the same account with no say in it. `hint` names an account without
+ * suppressing the chooser.
+ */
+function requestToken(prompt: string, hint?: string): Promise<GrantedToken> {
   return loadGis().then(
     (oauth2) =>
       new Promise<GrantedToken>((resolve, reject) => {
@@ -182,6 +192,7 @@ function requestToken(prompt: string): Promise<GrantedToken> {
           client_id: GOOGLE_CLIENT_ID,
           scope: DRIVE_SCOPE,
           prompt,
+          ...(hint ? { hint } : {}),
           callback: (resp) => {
             if (resp.error || !resp.access_token) {
               reject(new Error(resp.error ?? 'Sign-in was cancelled'));
@@ -322,9 +333,12 @@ function beginRedirectSignIn(): boolean {
   });
   // Re-authorizing a session that has lapsed already knows the account; naming
   // it skips the chooser, which is the whole of the interaction when a phone
-  // has one Google account signed in.
+  // has one Google account signed in. Starting from signed out is the opposite
+  // case — without an explicit prompt Google waves a single authorized account
+  // straight through, so ask for the chooser.
   const previous = getSessionUser();
   if (previous?.email) params.set('login_hint', previous.email);
+  else params.set('prompt', 'select_account');
 
   window.location.assign(`${AUTH_ENDPOINT}?${params.toString()}`);
   return true;
@@ -415,7 +429,14 @@ export async function completeRedirectSignIn(): Promise<
 export async function signIn(): Promise<AuthUser | null> {
   if (prefersRedirectFlow() && beginRedirectSignIn()) return null;
 
-  let grant = await requestToken('');
+  // Signed out means the account is an open question again: `select_account`
+  // so a shared machine, or a personal-vs-work switch, is one click rather than
+  // impossible. Re-authorizing a session that only lapsed already knows the
+  // account, and going straight through is the kinder path there.
+  const previous = getSessionUser();
+  let grant = previous
+    ? await requestToken('', previous.email || undefined)
+    : await requestToken('select_account');
   // With a single scope a partial grant should be unreachable — but granular
   // consent is Google's to change, and this turns a refusal into a message that
   // names the checkbox instead of an opaque failure on the first Drive call.
@@ -477,12 +498,19 @@ export async function trySilentRefresh(): Promise<string | null> {
   }
 }
 
+/**
+ * Sign out of this browser. Deliberately local: the session and everything
+ * derived from it go, and the grant on the Google account stays.
+ *
+ * Revoking here instead would be tidier-looking and worse to live with. A
+ * revoked grant means the consent screen on every single sign-in, which is the
+ * screen users are trained to read carefully — showing it as routine furniture
+ * for signing back into an app they use daily teaches them to click through it.
+ * And it buys nothing: no token survives sign-out to be revoked. The access
+ * token lives in sessionStorage for a tab, there is no refresh token (implicit
+ * grant, no backend), and what remains is an entry in the account's third-party
+ * apps list that the user can remove there whenever they mean to.
+ */
 export function signOut(): void {
-  const s = currentSession();
   endSession();
-  if (s?.token) {
-    loadGis()
-      .then((oauth2) => oauth2.revoke?.(s.token, () => {}))
-      .catch(() => {});
-  }
 }

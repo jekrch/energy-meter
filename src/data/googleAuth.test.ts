@@ -22,11 +22,16 @@ let grant: Grant | null = null;
 let identity: string | null = null;
 let revoked: string[] = [];
 let resets = 0;
+// Every token request GIS was asked to make, in order — the `prompt`/`hint`
+// pair is the whole of what separates a silent renewal from an account chooser.
+let tokenRequests: { prompt?: string; hint?: string }[] = [];
 let unregister: (() => void) | null = null;
 
 const realFetch = globalThis.fetch;
 
 interface StubTokenConfig {
+  prompt?: string;
+  hint?: string;
   callback: (resp: { access_token?: string; expires_in?: number; scope?: string; error?: string }) => void;
 }
 
@@ -35,12 +40,14 @@ beforeEach(async () => {
   identity = 'a@example.com';
   revoked = [];
   resets = 0;
+  tokenRequests = [];
 
   (window as unknown as { google: unknown }).google = {
     accounts: {
       oauth2: {
         initTokenClient: (config: StubTokenConfig) => ({
           requestAccessToken: () => {
+            tokenRequests.push({ prompt: config.prompt, hint: config.hint });
             if (!grant) config.callback({ error: 'access_denied' });
             else config.callback({ access_token: grant.token, expires_in: 3600, scope: grant.scope });
           },
@@ -67,6 +74,7 @@ beforeEach(async () => {
   signOut();
   resets = 0;
   revoked = [];
+  tokenRequests = [];
 });
 
 afterEach(() => {
@@ -86,6 +94,29 @@ describe('signIn', () => {
     expect(getAccessToken()).toBe('tok-a');
     expect(getSessionUser()?.email).toBe('a@example.com');
     expect(isSessionExpired()).toBe(false);
+  });
+
+  // Signing out and back in must not silently land in the account just left:
+  // an empty prompt asks Google for a token with no UI at all, which with one
+  // authorized account reissues for it instantly.
+  it('asks Google for the account chooser when starting from signed out', async () => {
+    await signIn();
+    expect(tokenRequests).toEqual([{ prompt: 'select_account', hint: undefined }]);
+
+    signOut();
+    tokenRequests = [];
+    await signIn();
+    expect(tokenRequests).toEqual([{ prompt: 'select_account', hint: undefined }]);
+  });
+
+  // The other half: a session that merely lapsed already knows its account, so
+  // re-authorizing it goes straight through rather than re-asking who they are.
+  it('goes straight through when re-authorizing a lapsed session', async () => {
+    await signIn();
+    tokenRequests = [];
+
+    await signIn();
+    expect(tokenRequests).toEqual([{ prompt: '', hint: 'a@example.com' }]);
   });
 });
 
@@ -197,6 +228,21 @@ describe('redirect sign-in', () => {
     expect(url.searchParams.get('response_type')).toBe('token');
     expect(url.searchParams.get('scope')).toBe(DRIVE_SCOPE);
     expect(url.searchParams.get('state')).toBeTruthy();
+    // Signed out: Google must offer the chooser rather than waving the one
+    // authorized account through.
+    expect(url.searchParams.get('prompt')).toBe('select_account');
+    expect(url.searchParams.get('login_hint')).toBeNull();
+  });
+
+  it('names the account instead of the chooser when a session only lapsed', async () => {
+    await signIn();
+    pretendTouchDevice();
+    const nav = captureNavigation();
+
+    expect(await signIn()).toBeNull();
+    const url = new URL(nav.url as string);
+    expect(url.searchParams.get('login_hint')).toBe('a@example.com');
+    expect(url.searchParams.get('prompt')).toBeNull();
   });
 
   it('signs in from the returned fragment and hands back the stashed state', async () => {
@@ -280,13 +326,21 @@ describe('redirect sign-in', () => {
 });
 
 describe('signOut', () => {
-  it('drops the session, revokes the token, and tears down per-account state', async () => {
+  it('drops the session and tears down per-account state', async () => {
     await signIn();
     signOut();
 
     expect(getSessionUser()).toBeNull();
     expect(getAccessToken()).toBeNull();
-    expect(revoked).toEqual(['tok-a']);
     expect(resets).toBe(1);
+  });
+
+  // Signing out locally must not revoke the grant: a revoked grant puts the
+  // consent screen in front of every subsequent sign-in, and there is no
+  // surviving token for the revocation to protect.
+  it('leaves the grant on the Google account intact', async () => {
+    await signIn();
+    signOut();
+    expect(revoked).toEqual([]);
   });
 });
