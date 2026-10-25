@@ -17,7 +17,7 @@ import {
     PEAK_TEMPLATES, SUMMER_MONTHS, WINTER_MONTHS, describeDays, describeHours,
     describeMonths, formatExclusiveEnd, formatHour12, newPeriod,
 } from '../../utils/peakScheduleFormat';
-import { HOLIDAY_RULES, DEFAULT_HOLIDAY_RULES, type HolidayRuleKey } from '../../utils/holidays';
+import { HOLIDAY_RULES, DEFAULT_HOLIDAY_RULES, parseDayKey, type HolidayRuleKey } from '../../utils/holidays';
 
 // Editor for the time-of-use peak schedule. Every control writes straight
 // through to the parent's schedule — there is no draft/apply step, so the bands
@@ -703,6 +703,29 @@ function HolidaySettings({ schedule, update }: {
         update({ holidayRules: current.includes(key) ? current.filter(k => k !== key) : [...current, key] });
     };
 
+    // The schedule only ever holds valid dates (App sanitizes every change), so
+    // binding the input to it directly dropped each keystroke of a half-typed
+    // "2026-1" before the date was complete. The raw text lives here instead and
+    // only its valid dates go up; it resyncs when the schedule's dates change
+    // from elsewhere (an import, a template, a clear).
+    const committedExtras = schedule.extraHolidays.join(', ');
+    const [extraText, setExtraText] = useState(committedExtras);
+    const [syncedExtras, setSyncedExtras] = useState(committedExtras);
+    if (committedExtras !== syncedExtras) {
+        setSyncedExtras(committedExtras);
+        setExtraText(committedExtras);
+    }
+    const [editingExtras, setEditingExtras] = useState(false);
+
+    const unrecognized = extraText.split(',').map(s => s.trim()).filter(s => s && parseDayKey(s) === null);
+
+    const changeExtras = (text: string) => {
+        const dates = text.split(',').map(s => s.trim()).filter(s => parseDayKey(s) !== null);
+        setExtraText(text);
+        setSyncedExtras(dates.join(', '));
+        update({ extraHolidays: dates });
+    };
+
     const extras = schedule.extraHolidays.length;
     const summary = `${schedule.holidayRules.length} of ${HOLIDAY_RULES.length} federal${
         extras ? ` · ${extras} custom` : ''
@@ -771,13 +794,19 @@ function HolidaySettings({ schedule, update }: {
                                     Additional dates (YYYY-MM-DD, comma separated)
                                 </span>
                                 <input
-                                    value={schedule.extraHolidays.join(', ')}
-                                    onChange={e => update({
-                                        extraHolidays: e.target.value.split(',').map(s => s.trim()).filter(Boolean),
-                                    })}
+                                    value={extraText}
+                                    onChange={e => changeExtras(e.target.value)}
+                                    onFocus={() => setEditingExtras(true)}
+                                    onBlur={() => setEditingExtras(false)}
                                     placeholder="2025-12-24"
                                     className="bg-sunken border border-line rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/40"
                                 />
+                                {/* Only once typing stops: mid-entry, every date is unrecognized. */}
+                                {!editingExtras && unrecognized.length > 0 && (
+                                    <span className="text-[11px] text-red-400">
+                                        Not a YYYY-MM-DD date, ignored: {unrecognized.join(', ')}
+                                    </span>
+                                )}
                             </label>
                         </div>
                     )}

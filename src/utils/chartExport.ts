@@ -117,12 +117,16 @@ export function findChartSvg(container: HTMLElement | null): SVGSVGElement | nul
     return container?.querySelector('svg.recharts-surface') ?? null;
 }
 
-/** Build a filesystem-safe file name from a title. */
-export function chartFileName(title: string): string {
+/**
+ * Build a filesystem-safe file name from a title. Data exports pass a longer
+ * `maxLength` so the active filters survive into the name and files exported
+ * under different filters don't collide.
+ */
+export function chartFileName(title: string, maxLength = 60): string {
     const slug = title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 60) || 'chart';
+        .slice(0, maxLength) || 'chart';
     return `energy-${slug}`;
 }

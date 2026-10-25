@@ -22,6 +22,9 @@ import {
 } from '../../hooks/useSlidingHighlight';
 import { ChartTooltip, type TooltipData } from '../common/ChartTooltip';
 import { DownloadChartButton } from '../common/DownloadChartButton';
+import { DownloadChartDataButton } from '../common/DownloadChartDataButton';
+import { chartFileName } from '../../utils/chartExport';
+import { buildAnalysisCsv } from '../../utils/chartDataExport';
 import { downsampleLTTB } from '../../utils/dataUtils';
 
 // §8: axis tick text is mono (JetBrains Mono), supplied via Recharts SVG tick props.
@@ -465,6 +468,17 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
 
     const xAxisDataKey = analysisView === 'averages' ? 'label' : 'fullDate';
 
+    // The timeline exports every period, not the downsampled set the chart draws.
+    const buildCsv = useCallback(() => buildAnalysisCsv(
+        analysisView === 'averages' ? chartData : filteredTimeline,
+        {
+            view: analysisView, groupBy, energyUnit, temperatureUnit,
+            includeTemperature: !!showWeather && !!weatherData?.size,
+        },
+    ), [analysisView, chartData, filteredTimeline, groupBy, energyUnit, temperatureUnit, showWeather, weatherData]);
+
+    const csvFileName = chartFileName([chartDescription.main, ...chartDescription.filters].join(' '), 100);
+
     return (
         <div className="flex flex-col h-full">
             <div className="px-4 pt-3 pb-2 border-b border-header-line">
@@ -475,12 +489,18 @@ export const AnalysisPanel = React.memo(function AnalysisPanel({
                             <div className="text-xs text-slate-400 mt-0.5">Filtered to {chartDescription.filters.join(' · ')}</div>
                         )}
                     </div>
-                    <DownloadChartButton
-                        containerRef={chartContainerRef}
-                        title={chartDescription.main}
-                        subtitle={chartDescription.filters.length > 0 ? `Filtered to ${chartDescription.filters.join(' · ')}` : undefined}
-                        className="flex-shrink-0 -mt-1 -mr-1"
-                    />
+                    <div className="flex items-center gap-1 flex-shrink-0 -mt-1 -mr-1">
+                        <DownloadChartDataButton
+                            buildCsv={buildCsv}
+                            fileName={csvFileName}
+                            disabled={chartData.length === 0 || showProcessingOverlay}
+                        />
+                        <DownloadChartButton
+                            containerRef={chartContainerRef}
+                            title={chartDescription.main}
+                            subtitle={chartDescription.filters.length > 0 ? `Filtered to ${chartDescription.filters.join(' · ')}` : undefined}
+                        />
+                    </div>
                 </div>
             </div>
 

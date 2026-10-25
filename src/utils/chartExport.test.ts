@@ -140,6 +140,11 @@ describe('chartFileName', () => {
     expect(slug.length).toBe(60);
   });
 
+  it('takes a longer cap when one is passed', () => {
+    const slug = chartFileName('a'.repeat(200), 100).replace('energy-', '');
+    expect(slug.length).toBe(100);
+  });
+
   it('applies the length cap last, so a cut landing on a separator keeps it', () => {
     // Documents current behavior: the trim runs before slice(0, 60), so a
     // title cut mid-separator keeps a trailing hyphen. Harmless in a file

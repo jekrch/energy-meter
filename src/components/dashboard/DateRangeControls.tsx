@@ -9,7 +9,8 @@ interface DateRangeControlsProps {
     dataBounds: TimeRange;
     brushData: BrushDataPoint[];
     isZoomed: boolean;
-    onViewChange: (field: 'start' | 'end', value: string) => void;
+    /** Returns false when the value was refused (it would invert the range). */
+    onViewChange: (field: 'start' | 'end', value: string) => boolean;
     onZoomOut: () => void;
     onBrushChange: (range: { start: number; end: number }) => void;
     onPan: (direction: 1 | -1) => void;
@@ -35,7 +36,25 @@ export const DateRangeControls = React.memo(function DateRangeControls({
         onBrushChange({ start, end });
     }, [onBrushChange]);
 
-    const displayRange = previewRange ?? viewRange;
+    // A picked value that would put start at or after end, held unapplied.
+    // Chrome's picker commits on every month step, so walking the end date back
+    // past the start passes through such values; showing them here (flagged)
+    // lets the walk continue to a valid date. Tied to the range it was refused
+    // against, so any change to the range (brush, pan, reset) drops it.
+    const [refused, setRefused] = useState<{ field: 'start' | 'end'; value: string; against: TimeRange } | null>(null);
+    const draft = refused && refused.against === viewRange ? refused : null;
+
+    const handleInput = (field: 'start' | 'end', value: string) => {
+        // An empty value is a half-edited field, not a date to apply or hold.
+        if (!value) return;
+        setRefused(onViewChange(field, value) ? null : { field, value, against: viewRange });
+    };
+
+    const inputValue = (field: 'start' | 'end') => {
+        if (previewRange) return formatDateTimeLocal(previewRange[field]);
+        if (draft?.field === field) return draft.value;
+        return formatDateTimeLocal(viewRange[field]);
+    };
 
     return (
         <div className="bg-surface-2 rounded-2xl border border-line p-3 sm:p-4 flex flex-col gap-3 hover:border-white/30 transition-colors duration-150 min-w-0">
@@ -86,9 +105,13 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                                 id={`date-${field}`}
                                 type="datetime-local"
                                 style={{ colorScheme: 'dark' }}
-                                value={formatDateTimeLocal(displayRange[field])}
-                                onChange={(e) => onViewChange(field, e.target.value)}
-                                className="appearance-none w-full max-w-full block m-0 min-w-0 bg-sunken border border-line rounded-md px-3 pr-10 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner box-border h-11 leading-[2.75rem]"
+                                value={inputValue(field)}
+                                onChange={(e) => handleInput(field, e.target.value)}
+                                aria-invalid={draft?.field === field || undefined}
+                                aria-describedby={draft?.field === field ? 'date-range-error' : undefined}
+                                className={`appearance-none w-full max-w-full block m-0 min-w-0 bg-sunken border rounded-md px-3 pr-10 text-sm text-slate-200 focus:outline-none focus:ring-2 transition-colors shadow-inner box-border h-11 leading-[2.75rem] ${draft?.field === field
+                                    ? 'border-red-500/60 focus:ring-red-500/20 focus:border-red-500'
+                                    : 'border-line focus:ring-emerald-500/20 focus:border-emerald-500'}`}
                             />
                             <CalendarDays
                                 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors"
@@ -101,6 +124,12 @@ export const DateRangeControls = React.memo(function DateRangeControls({
                     </div>
                 ))}
             </div>
+
+            {draft && (
+                <p id="date-range-error" role="status" className="-mt-1 text-[11px] text-red-400">
+                    {draft.field === 'end' ? 'End must be after start' : 'Start must be before end'} — not applied yet.
+                </p>
+            )}
 
             {/* Range Brush */}
             {brushData.length > 0 && (

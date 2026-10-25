@@ -1,8 +1,21 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import {
-    Upload, FileText, AlertCircle, Info, ChevronDown, ChevronUp,
+    Upload, FileText, AlertCircle, Info, ChevronDown,
     Download, Lock, Github, ExternalLink, User, Scissors, Zap, Building2, History,
 } from 'lucide-react';
+import {
+    useSlidingHighlight, highlightStyle, SLIDING_HIGHLIGHT_CLASS,
+} from '../../hooks/useSlidingHighlight';
+
+const INFO_TABS = [
+    { id: 'format', label: 'How to get it' },
+    { id: 'privacy', label: 'Privacy' },
+] as const;
+
+type InfoTab = typeof INFO_TABS[number]['id'];
+
+// Same expo-out curve as `.rise-in`, so the panel settles like the rest of the card.
+const EASE_OUT_EXPO = 'ease-[cubic-bezier(0.16,1,0.3,1)]';
 
 interface UploadSectionProps {
     onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -15,7 +28,35 @@ interface UploadSectionProps {
 
 export const UploadSection = React.memo(function UploadSection({ onUpload, onLoadSample, onShowHistory, historyCount = 0, loading, error }: UploadSectionProps) {
     const [showInfo, setShowInfo] = useState(false);
-    const [activeTab, setActiveTab] = useState<'format' | 'privacy'>('format');
+    const [activeTab, setActiveTab] = useState<InfoTab>('format');
+    const tabStrip = useSlidingHighlight(activeTab);
+
+    // The panes are stacked in one grid cell so they can cross-fade; the
+    // wrapper's height tweens to whichever is active rather than snapping
+    // between the tall "how to" pane and the short privacy one.
+    const paneRefs = useRef<Partial<Record<InfoTab, HTMLDivElement | null>>>({});
+    const [paneHeight, setPaneHeight] = useState<number>();
+
+    useLayoutEffect(() => {
+        const el = paneRefs.current[activeTab];
+        if (!el) return;
+        const measure = () => setPaneHeight(el.offsetHeight);
+        measure();
+        // Text rewraps when the card narrows — follow it.
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [activeTab]);
+
+    const paneClass = (id: InfoTab) => {
+        if (id === activeTab) return `opacity-100 translate-x-0 duration-300 ${EASE_OUT_EXPO}`;
+        // Exit toward the side the tab sits on, so the motion follows the strip.
+        const side = INFO_TABS.findIndex(t => t.id === id) < INFO_TABS.findIndex(t => t.id === activeTab)
+            ? '-translate-x-6'
+            : 'translate-x-6';
+        return `opacity-0 pointer-events-none ${side} duration-150 ease-out`;
+    };
 
     return (
         <div className="max-w-xl mx-auto mt-0 pb-12">
@@ -90,6 +131,8 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                 <div className="rise-in mt-8 pt-6 border-t border-header-line" style={{ animationDelay: '350ms' }}>
                     <button
                         onClick={() => setShowInfo(!showInfo)}
+                        aria-expanded={showInfo}
+                        aria-controls="green-button-info"
                         className={`flex items-center justify-center gap-3 text-sm w-full py-2.5 px-4 rounded-lg transition-colors ${
                             showInfo
                                 ? 'bg-emerald-500/12 text-emerald-300'
@@ -101,29 +144,65 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                             <span className="sm:hidden">What's Green Button data?<br />How do I get it?</span>
                             <span className="hidden sm:inline">What's Green Button data & how do I get it?</span>
                         </span>
-                        {showInfo ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />}
+                        <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform duration-300 ${EASE_OUT_EXPO} ${showInfo ? 'rotate-180' : ''}`} />
                     </button>
 
-                    {showInfo && (
-                        <div className="mt-4 bg-sunken border border-line rounded-lg overflow-hidden animate-in fade-in slide-in-from-top-2 text-left">
-                            <div className="flex border-b border-header-line">
-                                <button
-                                    onClick={() => setActiveTab('format')}
-                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'format' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    How to get it
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab('privacy')}
-                                    className={`flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === 'privacy' ? 'bg-emerald-500/12 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    Privacy
-                                </button>
+                    {/* Always mounted so it can animate both ways: the grid row
+                        tweens 0fr ↔ 1fr, which animates to the content's real
+                        height without measuring it. `inert` keeps the collapsed
+                        links out of the tab order. */}
+                    <div
+                        id="green-button-info"
+                        inert={!showInfo}
+                        className={`grid transition-[grid-template-rows,opacity] duration-500 ${EASE_OUT_EXPO} motion-reduce:transition-none ${
+                            showInfo ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                        }`}
+                    >
+                        <div className="min-h-0 overflow-hidden">
+                        <div className={`pt-4 transition-transform duration-500 ${EASE_OUT_EXPO} motion-reduce:transition-none ${showInfo ? 'translate-y-0' : '-translate-y-3'}`}>
+                        <div className="bg-sunken border border-line rounded-lg overflow-hidden text-left">
+                            <div
+                                ref={tabStrip.containerRef}
+                                role="tablist"
+                                aria-label="Green Button info"
+                                className="relative flex border-b border-header-line"
+                            >
+                                {/* One tinted, underlined highlight that slides to the
+                                    picked tab, like the modal tab bars. */}
+                                {tabStrip.rect && (
+                                    <div
+                                        aria-hidden
+                                        className={`${SLIDING_HIGHLIGHT_CLASS} bg-emerald-500/12 border-b-2 border-emerald-400`}
+                                        style={highlightStyle(tabStrip.rect)}
+                                    />
+                                )}
+                                {INFO_TABS.map(({ id, label }) => (
+                                    <button
+                                        key={id}
+                                        ref={tabStrip.setItemRef(id)}
+                                        onClick={() => setActiveTab(id)}
+                                        role="tab"
+                                        aria-selected={activeTab === id}
+                                        aria-controls={`green-button-panel-${id}`}
+                                        className={`relative flex-1 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${activeTab === id ? 'text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
                             </div>
 
-                            <div className="p-5">
-                                {activeTab === 'format' ? (
-                                    <>
+                            <div
+                                className={`grid overflow-hidden transition-[height] duration-300 ${EASE_OUT_EXPO} motion-reduce:transition-none`}
+                                style={{ height: paneHeight }}
+                            >
+                                    <div
+                                        id="green-button-panel-format"
+                                        ref={el => { paneRefs.current.format = el; }}
+                                        role="tabpanel"
+                                        aria-label="How to get it"
+                                        inert={activeTab !== 'format'}
+                                        className={`col-start-1 row-start-1 self-start p-5 transition-[opacity,transform] motion-reduce:transition-none ${paneClass('format')}`}
+                                    >
                                         <div className="mb-5 pb-5 border-b border-header-line">
                                             <h4 className="font-semibold text-emerald-400 mb-2 flex items-center gap-2 text-sm">
                                                 <Zap className="w-4 h-4" /> What is it?
@@ -159,9 +238,16 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                                 <li>Click the <strong>Green Button Download</strong> button below the chart.</li>
                                             </ol>
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="space-y-4">
+                                    </div>
+
+                                    <div
+                                        id="green-button-panel-privacy"
+                                        ref={el => { paneRefs.current.privacy = el; }}
+                                        role="tabpanel"
+                                        aria-label="Privacy"
+                                        inert={activeTab !== 'privacy'}
+                                        className={`col-start-1 row-start-1 self-start p-5 space-y-4 transition-[opacity,transform] motion-reduce:transition-none ${paneClass('privacy')}`}
+                                    >
                                         <div className="bg-surface-2 p-3 rounded border border-line-2 flex gap-3">
                                             <Lock className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                                             <p className="text-xs text-slate-400">
@@ -183,10 +269,11 @@ export const UploadSection = React.memo(function UploadSection({ onUpload, onLoa
                                             </ol>
                                         </div>
                                     </div>
-                                )}
                             </div>
                         </div>
-                    )}
+                        </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

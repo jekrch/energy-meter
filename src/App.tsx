@@ -487,12 +487,17 @@ export default function App() {
   const isZoomed = dataBounds.start !== null && (viewRange.start !== dataBounds.start || viewRange.end !== dataBounds.end);
 
   // --- Handlers ---
-  const handleViewInput = (field: 'start' | 'end', value: string) => {
+  // Returns whether the value was applied. One that would put start at or after
+  // end is refused: an inverted range holds no readings, and an empty view
+  // leaves nothing to show. The date input keeps a refused value as a draft.
+  const handleViewInput = (field: 'start' | 'end', value: string): boolean => {
     const ts = parseDateTimeLocal(value);
-    if (ts && dataBounds.start !== null && dataBounds.end !== null) {
-      const clamped = Math.max(dataBounds.start, Math.min(dataBounds.end, ts));
-      setViewRange(prev => ({ ...prev, [field]: clamped })); setPage(1);
-    }
+    if (!ts || dataBounds.start === null || dataBounds.end === null) return false;
+    const clamped = Math.max(dataBounds.start, Math.min(dataBounds.end, ts));
+    const other = field === 'start' ? viewRange.end : viewRange.start;
+    if (other !== null && (field === 'start' ? clamped >= other : clamped <= other)) return false;
+    setViewRange(prev => ({ ...prev, [field]: clamped })); setPage(1);
+    return true;
   };
 
   const handleZoomOut = () => { setViewRange({ start: dataBounds.start, end: dataBounds.end }); setPage(1); };
@@ -992,7 +997,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="ml-1.5 align-middle text-[10px] font-medium text-slate-500 hover:text-emerald-400 transition-colors"
                   >
-                    v5
+                    v5.1
                   </a>
                 </h1>
                 {fileName && <p className="text-slate-500 text-xs font-mono truncate max-w-[180px] sm:max-w-[260px] mt-0.5">{fileName}</p>}
@@ -1036,22 +1041,27 @@ export default function App() {
               />
             )
           ) : (
-            stats && (
+            // Gated on the dataset, not on `stats`: a view range that holds no
+            // readings nulls the stats, and taking the whole dashboard down with
+            // them took the date controls needed to widen the range back out.
+            rawData.length > 0 && (
               <div key={loadId} className="space-y-4">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                  <StatCard className="rise-in" style={{ animationDelay: '0ms' }} accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
-                  <StatCard className="rise-in" style={{ animationDelay: '70ms' }} accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
-                  {metricMode === 'demand' ? (
-                    <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" subHighlight={stats.avgCost} sub="avg cost" />
-                  ) : (
-                    <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
-                  )}
-                  {metricMode === 'demand' ? (
-                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} actionLabel="View" onAction={handleViewPeakDemand} />
-                  ) : (
-                    <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} actionLabel="View" onAction={handleViewPeakDay} />
-                  )}
-                </div>
+                {stats && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <StatCard className="rise-in" style={{ animationDelay: '0ms' }} accent="bg-slate-500" icon={<Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label={isZoomed ? "View Total" : "Total"} value={stats.total} unit={stats.unit} subHighlight={stats.avgDemand} sub="kW avg" />
+                    <StatCard className="rise-in" style={{ animationDelay: '70ms' }} accent="bg-emerald-400" icon={<DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />} label="Total Cost" value={stats.totalCost} subHighlight={stats.effectiveRate} sub="effective rate" />
+                    {metricMode === 'demand' ? (
+                      <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg Demand" value={stats.avgDemand} unit="kW" subHighlight={stats.avgCost} sub="avg cost" />
+                    ) : (
+                      <StatCard className="rise-in" style={{ animationDelay: '140ms' }} accent="bg-slate-500" icon={<Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />} label="Avg/Day" value={stats.average} unit={stats.unit} subHighlight={stats.avgCost} sub="avg cost" />
+                    )}
+                    {metricMode === 'demand' ? (
+                      <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<Gauge className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Demand" value={stats.peakDemand} unit="kW" subHighlight={stats.peakDemandDate} actionLabel="View" onAction={handleViewPeakDemand} />
+                    ) : (
+                      <StatCard className="rise-in" style={{ animationDelay: '210ms' }} accent="bg-red-400" icon={<AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />} label="Peak Day" value={stats.peak} unit={stats.unit} subHighlight={stats.peakDate} sub={`• ${stats.peakCost}`} actionLabel="View" onAction={handleViewPeakDay} />
+                    )}
+                  </div>
+                )}
 
                 <div className="rise-in" style={{ animationDelay: '280ms' }}>
                   <DateRangeControls viewRange={viewRange} dataBounds={dataBounds} brushData={brushData} isZoomed={isZoomed} onViewChange={handleViewInput} onZoomOut={handleZoomOut} onBrushChange={handleChartSelection} onPan={handlePan} />
